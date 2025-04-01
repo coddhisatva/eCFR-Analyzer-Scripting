@@ -22,13 +22,14 @@ def download_title_xml(title_number, date=None):
     
     Args:
         title_number: The CFR title number
-        date: The point-in-time date (default: current date in YYYY-MM-DD format)
+        date: The point-in-time date (default: 2024-03-28)
     
     Returns:
         Path to the downloaded XML file
     """
     if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+        # Use most recent available date
+        date = "2024-03-28"
     
     # Create the URL
     url = f"https://www.ecfr.gov/api/versioner/v1/full/{date}/title-{title_number}.xml"
@@ -41,7 +42,10 @@ def download_title_xml(title_number, date=None):
     # Download the file
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Raise exception for HTTP errors
+        if response.status_code == 404:
+            print(f"Title {title_number} not found for date {date}. The API might not have data for this date.")
+            return None
+        response.raise_for_status()  # Raise exception for other HTTP errors
         
         with open(output_file, "wb") as f:
             f.write(response.content)
@@ -57,14 +61,14 @@ def download_all_titles(date=None, excluded_titles=[35]):
     Download XML for all CFR titles, excluding the specified ones
     
     Args:
-        date: The point-in-time date (default: current date)
+        date: The point-in-time date (default: 2024-03-28)
         excluded_titles: List of title numbers to exclude
     
     Returns:
         List of paths to downloaded XML files
     """
     if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = "2024-03-28"
     
     downloaded_files = []
     
