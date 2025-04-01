@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Import models
 from src.models.node import Node
-from src.database.connector import insert_nodes
+from src.models.content_chunk import ContentChunk
+from src.database.connector import insert_nodes, insert_content_chunks
 
 # Directory for raw and processed data
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
@@ -36,6 +37,10 @@ VALID_TYPES = [
     "TITLE", "SUBTITLE", "CHAPTER", "SUBCHAP", "PART", "SUBPART", 
     "SUBJECT-GROUP", "SECTION", "APPENDIX"
 ]
+
+# Constants for content chunking
+CHUNK_SIZE_BYTES = 800 * 1024  # 800KB
+CHUNK_SIZE_WARNING = 700 * 1024  # 700KB - for logging large chunks
 
 def ensure_directory_exists(directory):
     """Create directory if it doesn't exist."""
@@ -136,77 +141,98 @@ def create_link(components: List[Tuple[str, str]]) -> str:
     
     return "/".join(parts)
 
-def process_title_xml(xml_file_path: str) -> List[Node]:
+def split_content_into_chunks(content: str, section_id: str) -> List[ContentChunk]:
     """
-    Process a CFR title XML file into database entities
+    Split content into chunks of approximately 800KB each.
+    Splits on paragraph boundaries, falling back to sentence boundaries if needed.
     
     Args:
-        xml_file_path: Path to the XML file
-    
+        content: The text content to split
+        section_id: The ID of the section this content belongs to
+        
     Returns:
-        List of node entities to be stored in the database
+        List of ContentChunk objects
     """
-    logger.info(f"Starting to process {xml_file_path}")
-    
-    # Parse the XML file
-    try:
-        with open(xml_file_path, 'r', encoding='utf-8') as f:
-            xml_content = f.read()
-        
-        logger.info(f"XML content length: {len(xml_content)}")
-        
-        # Use BeautifulSoup for parsing
-        soup = BeautifulSoup(xml_content, "xml")
-        logger.info(f"BeautifulSoup object created: {soup is not None}")
-        
-        # Extract title information from DIV1 element
-        logger.info("Searching for title element...")
-        title_element = soup.find("DIV1", {"TYPE": "TITLE"})
-        logger.info(f"Title element found: {title_element is not None}")
-        if title_element:
-            logger.info(f"Title element attributes: {title_element.attrs}")
-        
-        if not title_element:
-            logger.error(f"No TITLE element found in {xml_file_path}")
-            return []
-        
-        # Extract title number and name
-        title_num = title_element.get("N", "")
-        head_elem = title_element.find("HEAD")
-        title_name = clean_text(head_elem.text) if head_elem else ""
-        
-        # Create the title node
-        title_components = [("title", title_num)]
-        title_id = create_hierarchical_id(title_components)
-        title_citation = create_citation(title_components)
-        title_link = create_link(title_components)
-        
-        title_node = Node(
-            id=title_id,
-            citation=title_citation,
-            link=title_link,
-            node_type="structure",
-            level_type="title",
-            number=title_num,
-            node_name=title_name,
-            top_level_title=title_num
-        )
-        
-        # List to hold all nodes
-        nodes = [title_node]
-        
-        # Process the hierarchy recursively
-        process_children(title_element, title_components, title_id, title_num, nodes)
-        
-        logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes")
-        return nodes
-    
-    except Exception as e:
-        logger.error(f"Error processing {xml_file_path}: {e}")
-        logger.error(traceback.format_exc())
+    if not content:
         return []
+        
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    chunk_number = 1
+    
+    # Split content into paragraphs
+    paragraphs = content.split('\n\n')
+    
+    for paragraph in paragraphs:
+        paragraph_size = len(paragraph.encode('utf-8'))
+        
+        # If a single paragraph is too large, split on sentences
+        if paragraph_size > CHUNK_SIZE_BYTES:
+            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+            for sentence in sentences:
+                sentence_size = len(sentence.encode('utf-8'))
+                
+                # If current chunk + sentence would exceed limit, create new chunk
+                if current_size + sentence_size > CHUNK_SIZE_BYTES:
+                    if current_chunk:
+                        chunk_content = '\n\n'.join(current_chunk)
+                        chunk_id = f"{section_id}_chunk_{chunk_number}"
+                        chunks.append(ContentChunk(
+                            id=chunk_id,
+                            section_id=section_id,
+                            chunk_number=chunk_number,
+                            content=chunk_content
+                        ))
+                        chunk_number += 1
+                        current_chunk = []
+                        current_size = 0
+                    
+                    # If a single sentence is too large, log warning
+                    if sentence_size > CHUNK_SIZE_BYTES:
+                        logger.warning(f"Found sentence larger than chunk size in section {section_id}")
+                    
+                    current_chunk = [sentence]
+                    current_size = sentence_size
+                else:
+                    current_chunk.append(sentence)
+                    current_size += sentence_size
+        else:
+            # If current chunk + paragraph would exceed limit, create new chunk
+            if current_size + paragraph_size > CHUNK_SIZE_BYTES:
+                if current_chunk:
+                    chunk_content = '\n\n'.join(current_chunk)
+                    chunk_id = f"{section_id}_chunk_{chunk_number}"
+                    chunks.append(ContentChunk(
+                        id=chunk_id,
+                        section_id=section_id,
+                        chunk_number=chunk_number,
+                        content=chunk_content
+                    ))
+                    chunk_number += 1
+                    current_chunk = []
+                    current_size = 0
+                
+                current_chunk = [paragraph]
+                current_size = paragraph_size
+            else:
+                current_chunk.append(paragraph)
+                current_size += paragraph_size
+    
+    # Add the last chunk if there's anything left
+    if current_chunk:
+        chunk_content = '\n\n'.join(current_chunk)
+        chunk_id = f"{section_id}_chunk_{chunk_number}"
+        chunks.append(ContentChunk(
+            id=chunk_id,
+            section_id=section_id,
+            chunk_number=chunk_number,
+            content=chunk_content
+        ))
+    
+    return chunks
 
-def process_children(parent_element, parent_components, parent_id, title_num, nodes):
+def process_children(parent_element, parent_components, parent_id, title_num, nodes, chunks):
     """Process child elements recursively"""
     if not parent_element:
         return
@@ -238,9 +264,18 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
             content_elements = div.find_all(["P", "AUTH", "SOURCE", "CITA"])
             content = "\n\n".join(clean_text(elem.text) for elem in content_elements if clean_text(elem.text))
             
-            # Add word count to metadata
+            # Split content into chunks
+            content_chunks = split_content_into_chunks(content, div_id)
+            
+            # Calculate total word count
+            total_words = sum(len(chunk.content.split()) for chunk in content_chunks)
+            
+            # Create metadata with chunk information
             metadata = {
-                'word_count': len(content.split()) if content else 0
+                'word_count': total_words,
+                'total_chunks': len(content_chunks),
+                'first_chunk_id': content_chunks[0].id if content_chunks else None,
+                'last_chunk_id': content_chunks[-1].id if content_chunks else None
             }
             
             div_node = Node(
@@ -251,11 +286,13 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 level_type=level_type,
                 number=div_num,
                 node_name=div_name,
-                content=content,
                 parent=parent_id,
                 top_level_title=title_num,
                 metadata=metadata
             )
+            
+            # Add chunks to the list
+            chunks.extend(content_chunks)
         else:
             # All other types are structure nodes
             div_node = Node(
@@ -273,7 +310,78 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         nodes.append(div_node)
         
         # Process children recursively
-        process_children(div, div_components, div_id, title_num, nodes)
+        process_children(div, div_components, div_id, title_num, nodes, chunks)
+
+def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk]]:
+    """
+    Process a CFR title XML file into database entities
+    
+    Args:
+        xml_file_path: Path to the XML file
+    
+    Returns:
+        Tuple of (list of nodes, list of content chunks)
+    """
+    logger.info(f"Starting to process {xml_file_path}")
+    
+    # Parse the XML file
+    try:
+        with open(xml_file_path, 'r', encoding='utf-8') as f:
+            xml_content = f.read()
+        
+        logger.info(f"XML content length: {len(xml_content)}")
+        
+        # Use BeautifulSoup for parsing
+        soup = BeautifulSoup(xml_content, "xml")
+        logger.info(f"BeautifulSoup object created: {soup is not None}")
+        
+        # Extract title information from DIV1 element
+        logger.info("Searching for title element...")
+        title_element = soup.find("DIV1", {"TYPE": "TITLE"})
+        logger.info(f"Title element found: {title_element is not None}")
+        if title_element:
+            logger.info(f"Title element attributes: {title_element.attrs}")
+        
+        if not title_element:
+            logger.error(f"No TITLE element found in {xml_file_path}")
+            return [], []
+        
+        # Extract title number and name
+        title_num = title_element.get("N", "")
+        head_elem = title_element.find("HEAD")
+        title_name = clean_text(head_elem.text) if head_elem else ""
+        
+        # Create the title node
+        title_components = [("title", title_num)]
+        title_id = create_hierarchical_id(title_components)
+        title_citation = create_citation(title_components)
+        title_link = create_link(title_components)
+        
+        title_node = Node(
+            id=title_id,
+            citation=title_citation,
+            link=title_link,
+            node_type="structure",
+            level_type="title",
+            number=title_num,
+            node_name=title_name,
+            top_level_title=title_num
+        )
+        
+        # Lists to hold all nodes and chunks
+        nodes = [title_node]
+        chunks = []
+        
+        # Process the hierarchy recursively
+        process_children(title_element, title_components, title_id, title_num, nodes, chunks)
+        
+        logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes and {len(chunks)} chunks")
+        return nodes, chunks
+    
+    except Exception as e:
+        logger.error(f"Error processing {xml_file_path}: {e}")
+        logger.error(traceback.format_exc())
+        return [], []
 
 def process_all_titles(date=None):
     """
@@ -294,6 +402,7 @@ def process_all_titles(date=None):
         return 0
     
     total_nodes = 0
+    total_chunks = 0
     
     # Titles to skip (1-4, 35, and 40)
     skip_titles = set(range(1, 5)) | {35, 40}
@@ -313,7 +422,7 @@ def process_all_titles(date=None):
             continue
             
         xml_file_path = os.path.join(input_dir, filename)
-        nodes = process_title_xml(xml_file_path)
+        nodes, chunks = process_title_xml(xml_file_path)
         
         if nodes:
             # Write processed nodes to file for backup
@@ -323,16 +432,19 @@ def process_all_titles(date=None):
                 for node in nodes:
                     f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
             
-            # Insert nodes into database
+            # Insert nodes and chunks into database
             try:
                 insert_nodes(nodes)
-                print(f"Inserted {len(nodes)} nodes for {filename}")
+                if chunks:
+                    insert_content_chunks(chunks)
+                print(f"Inserted {len(nodes)} nodes and {len(chunks)} chunks for {filename}")
             except Exception as e:
-                print(f"Error inserting nodes for {filename}: {e}")
+                print(f"Error inserting data for {filename}: {e}")
             
             total_nodes += len(nodes)
+            total_chunks += len(chunks)
     
-    print(f"Processed {total_nodes} total nodes")
+    print(f"Processed {total_nodes} total nodes and {total_chunks} total chunks")
     return total_nodes
 
 if __name__ == "__main__":
@@ -359,7 +471,7 @@ if __name__ == "__main__":
     
     if args.file:
         # Process single file
-        nodes = process_title_xml(args.file)
+        nodes, chunks = process_title_xml(args.file)
         if nodes:
             # Write processed nodes to file for backup
             title_num = nodes[0].number if nodes else "unknown"
@@ -369,12 +481,14 @@ if __name__ == "__main__":
                 for node in nodes:
                     f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
             
-            # Insert nodes into database
+            # Insert nodes and chunks into database
             try:
                 insert_nodes(nodes)
-                print(f"Inserted {len(nodes)} nodes from {args.file}")
+                if chunks:
+                    insert_content_chunks(chunks)
+                print(f"Inserted {len(nodes)} nodes and {len(chunks)} chunks from {args.file}")
             except Exception as e:
-                print(f"Error inserting nodes from {args.file}: {e}")
+                print(f"Error inserting data from {args.file}: {e}")
     else:
         # Process all files for latest date
         process_all_titles()
