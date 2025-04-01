@@ -9,6 +9,14 @@ from typing import Optional, Dict, Any
 class Node:
     """
     Represents a node in the CFR hierarchy
+    
+    Metadata structure for content nodes:
+    {
+        'word_count': int,  # Total word count across all chunks
+        'total_chunks': int,  # Total number of chunks
+        'first_chunk_id': str,  # ID of first chunk
+        'last_chunk_id': str  # ID of last chunk
+    }
     """
     id: str  # Hierarchical ID (e.g., us/federal/ecfr/title=1/chapter=I/part=1)
     citation: str  # Formatted citation (e.g., "1 CFR Part 1")
@@ -20,5 +28,4 @@ class Node:
     parent: Optional[str] = None  # Parent node ID
     top_level_title: Optional[str] = None  # Title number this belongs to
     reserved: Optional[str] = None  # For 'reserved' sections
-    content: Optional[str] = None  # Text content (for sections)
     metadata: Optional[Dict[str, Any]] = None  # Additional metadata
