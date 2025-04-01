@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import html
 import traceback
 import logging
+import argparse
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
@@ -152,11 +153,19 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
         with open(xml_file_path, 'r', encoding='utf-8') as f:
             xml_content = f.read()
         
+        logger.info(f"XML content length: {len(xml_content)}")
+        
         # Use BeautifulSoup for parsing
         soup = BeautifulSoup(xml_content, "xml")
+        logger.info(f"BeautifulSoup object created: {soup is not None}")
         
         # Extract title information from DIV1 element
+        logger.info("Searching for title element...")
         title_element = soup.find("DIV1", {"TYPE": "TITLE"})
+        logger.info(f"Title element found: {title_element is not None}")
+        if title_element:
+            logger.info(f"Title element attributes: {title_element.attrs}")
+        
         if not title_element:
             logger.error(f"No TITLE element found in {xml_file_path}")
             return []
@@ -203,9 +212,12 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         return
         
     # Look for any DIV element with a valid TYPE
-    for div in parent_element.find_all("DIV", recursive=False):
+    logger.info(f"Looking for child elements in {parent_element.name} {parent_element.get('N', '')}")
+    for div in parent_element.select("DIV1, DIV2, DIV3, DIV4, DIV5, DIV6, DIV7, DIV8, DIV9"):
         div_type = div.get("TYPE", "")
+        logger.info(f"Found DIV element: {div.name} with TYPE={div_type}")
         if div_type not in VALID_TYPES:
+            logger.info(f"Skipping invalid type: {div_type}")
             continue
             
         logger.info(f"Processing {div_type.lower()} {div.get('N', '')}")
@@ -262,9 +274,6 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         
         # Process children recursively
         process_children(div, div_components, div_id, title_num, nodes)
-        
-        # Free memory after processing
-        div.decompose()
 
 def process_all_titles(date=None):
     """
@@ -313,5 +322,45 @@ def process_all_titles(date=None):
     return total_nodes
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process CFR XML files')
+    parser.add_argument('file', nargs='?', help='Single XML file to process. If not provided, processes all files for latest date.')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    
+    args = parser.parse_args()
+    
+    # Set logging level based on verbose flag
+    if not args.verbose:
+        logger.setLevel(logging.INFO)
+        # Filter out the "Looking for child elements" and "Found DIV element" messages
+        class FilterDetailedLogs(logging.Filter):
+            def filter(self, record):
+                return not (
+                    "Looking for child elements" in record.msg or 
+                    "Found DIV element" in record.msg or
+                    "Processing " in record.msg
+                )
+        logger.addFilter(FilterDetailedLogs())
+    
     ensure_directory_exists(PROCESSED_DATA_DIR)
-    process_all_titles()
+    
+    if args.file:
+        # Process single file
+        nodes = process_title_xml(args.file)
+        if nodes:
+            # Write processed nodes to file for backup
+            title_num = nodes[0].number if nodes else "unknown"
+            output_file = os.path.join(PROCESSED_DATA_DIR, f"title-{title_num}-processed.txt")
+            
+            with open(output_file, "w", encoding="utf-8") as f:
+                for node in nodes:
+                    f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
+            
+            # Insert nodes into database
+            try:
+                insert_nodes(nodes)
+                print(f"Inserted {len(nodes)} nodes from {args.file}")
+            except Exception as e:
+                print(f"Error inserting nodes from {args.file}: {e}")
+    else:
+        # Process all files for latest date
+        process_all_titles()
