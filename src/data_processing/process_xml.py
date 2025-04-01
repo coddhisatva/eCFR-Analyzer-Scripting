@@ -283,7 +283,7 @@ def process_part(part, parent_components, parent_id, title_num, nodes):
             number=section_num,
             node_name=section_name,
             content=content,
-            parent=parent_id,
+            parent=part_id,
             top_level_title=title_num,
             metadata=metadata
         )
