@@ -38,9 +38,18 @@ def insert_nodes(nodes: List[Node]):
     """
     client = get_supabase_client()
     
-    # Convert nodes to dictionaries for insertion
-    node_dicts = []
+    # Track seen IDs to detect duplicates
+    seen_ids = set()
+    unique_nodes = []
+    
+    # Convert nodes to dictionaries for insertion, filtering out duplicates
     for node in nodes:
+        if node.id in seen_ids:
+            print(f"WARNING: Skipping duplicate node ID: {node.id}")
+            print(f"Node details: type={node.node_type}, level={node.level_type}, number={node.number}")
+            continue
+        seen_ids.add(node.id)
+        
         node_dict = {
             'id': node.id,
             'citation': node.citation,
@@ -55,16 +64,20 @@ def insert_nodes(nodes: List[Node]):
             'content': node.content,
             'metadata': node.metadata
         }
-        node_dicts.append(node_dict)
+        unique_nodes.append(node_dict)
     
     # Insert nodes in batches to avoid request size limits
     batch_size = 100
-    for i in range(0, len(node_dicts), batch_size):
-        batch = node_dicts[i:i + batch_size]
+    for i in range(0, len(unique_nodes), batch_size):
+        batch = unique_nodes[i:i + batch_size]
         try:
             # Use upsert to handle duplicates
             result = client.table('nodes').upsert(batch).execute()
             print(f"Inserted/updated batch of {len(batch)} nodes")
         except Exception as e:
             print(f"Error inserting batch: {e}")
+            # Print the first few nodes in the problematic batch
+            print("First few nodes in problematic batch:")
+            for node in batch[:3]:
+                print(f"ID: {node['id']}, Type: {node['node_type']}, Level: {node['level_type']}")
             raise

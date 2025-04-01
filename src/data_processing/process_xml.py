@@ -211,9 +211,9 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
     if not parent_element:
         return
         
-    # Look for any DIV element with a valid TYPE
+    # Look for immediate child DIV elements with a valid TYPE
     logger.info(f"Looking for child elements in {parent_element.name} {parent_element.get('N', '')}")
-    for div in parent_element.select("DIV1, DIV2, DIV3, DIV4, DIV5, DIV6, DIV7, DIV8, DIV9"):
+    for div in parent_element.find_all(["DIV1", "DIV2", "DIV3", "DIV4", "DIV5", "DIV6", "DIV7", "DIV8", "DIV9"], recursive=False):
         div_type = div.get("TYPE", "")
         logger.info(f"Found DIV element: {div.name} with TYPE={div_type}")
         if div_type not in VALID_TYPES:
