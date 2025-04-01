@@ -295,28 +295,42 @@ def process_all_titles(date=None):
     
     total_nodes = 0
     
+    # Titles to skip (1-4, 35, and 40)
+    skip_titles = set(range(1, 5)) | {35, 40}
+    
     for filename in os.listdir(input_dir):
-        if filename.endswith(".xml"):
-            xml_file_path = os.path.join(input_dir, filename)
-            nodes = process_title_xml(xml_file_path)
+        if not filename.endswith(".xml"):
+            continue
             
-            if nodes:
-                # Write processed nodes to file for backup
-                title_num = nodes[0].number if nodes else "unknown"
-                output_file = os.path.join(PROCESSED_DATA_DIR, f"title-{title_num}-processed.txt")
-                
-                with open(output_file, "w", encoding="utf-8") as f:
-                    for node in nodes:
-                        f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
-                
-                # Insert nodes into database
-                try:
-                    insert_nodes(nodes)
-                    print(f"Inserted {len(nodes)} nodes for {filename}")
-                except Exception as e:
-                    print(f"Error inserting nodes for {filename}: {e}")
-                
-                total_nodes += len(nodes)
+        # Extract title number from filename
+        title_match = re.search(r'title-(\d+)\.xml', filename)
+        if not title_match:
+            continue
+            
+        title_num = int(title_match.group(1))
+        if title_num in skip_titles:
+            print(f"Skipping Title {title_num} (already processed)")
+            continue
+            
+        xml_file_path = os.path.join(input_dir, filename)
+        nodes = process_title_xml(xml_file_path)
+        
+        if nodes:
+            # Write processed nodes to file for backup
+            output_file = os.path.join(PROCESSED_DATA_DIR, f"title-{title_num}-processed.txt")
+            
+            with open(output_file, "w", encoding="utf-8") as f:
+                for node in nodes:
+                    f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
+            
+            # Insert nodes into database
+            try:
+                insert_nodes(nodes)
+                print(f"Inserted {len(nodes)} nodes for {filename}")
+            except Exception as e:
+                print(f"Error inserting nodes for {filename}: {e}")
+            
+            total_nodes += len(nodes)
     
     print(f"Processed {total_nodes} total nodes")
     return total_nodes
