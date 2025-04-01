@@ -30,6 +30,12 @@ BASE_URL = "https://www.ecfr.gov/current"
 # Words that indicate a node is reserved
 RESERVED_KEYWORDS = ["[RESERVED]", "[Reserved]"]
 
+# Add after the RESERVED_KEYWORDS constant
+VALID_TYPES = [
+    "TITLE", "SUBTITLE", "CHAPTER", "SUBCHAP", "PART", "SUBPART", 
+    "SUBJECT-GROUP", "SECTION", "APPENDIX"
+]
+
 def ensure_directory_exists(directory):
     """Create directory if it doesn't exist."""
     if not os.path.exists(directory):
@@ -196,111 +202,69 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
     if not parent_element:
         return
         
-    # Process chapters (DIV3)
-    logger.info(f"Looking for chapters in {parent_components}")
-    for chapter in parent_element.find_all("DIV3", {"TYPE": "CHAPTER"}, recursive=False):
-        logger.info(f"Processing chapter {chapter.get('N', '')}")
-        chapter_num = chapter.get("N", "")
-        head_elem = chapter.find("HEAD")
-        chapter_name = clean_text(head_elem.text) if head_elem else ""
-        
-        chapter_components = parent_components + [("chapter", chapter_num)]
-        chapter_id = create_hierarchical_id(chapter_components)
-        chapter_citation = create_citation(chapter_components)
-        chapter_link = create_link(chapter_components)
-        
-        chapter_node = Node(
-            id=chapter_id,
-            citation=chapter_citation,
-            link=chapter_link,
-            node_type="structure",
-            level_type="chapter",
-            number=chapter_num,
-            node_name=chapter_name,
-            parent=parent_id,
-            top_level_title=title_num
-        )
-        nodes.append(chapter_node)
-        
-        # Process parts (DIV5) - can be under chapter or subchapter
-        parts = chapter.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
-        for part in parts:
-            process_part(part, chapter_components, chapter_id, title_num, nodes)
-            part.decompose()  # Free memory after processing
+    # Look for any DIV element with a valid TYPE
+    for div in parent_element.find_all("DIV", recursive=False):
+        div_type = div.get("TYPE", "")
+        if div_type not in VALID_TYPES:
+            continue
             
-        # Also check for parts under subchapters
-        for subchap in chapter.find_all("DIV4", {"TYPE": "SUBCHAP"}, recursive=False):
-            subchap_parts = subchap.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
-            for part in subchap_parts:
-                process_part(part, chapter_components, chapter_id, title_num, nodes)
-                part.decompose()  # Free memory after processing
+        logger.info(f"Processing {div_type.lower()} {div.get('N', '')}")
+        div_num = div.get("N", "")
+        head_elem = div.find("HEAD")
+        div_name = clean_text(head_elem.text) if head_elem else ""
         
-        chapter.decompose()  # Free memory after processing
-
-def process_part(part, parent_components, parent_id, title_num, nodes):
-    """Process a part element"""
-    logger.info(f"Processing part {part.get('N', '')}")
-    part_num = part.get("N", "")
-    head_elem = part.find("HEAD")
-    part_name = clean_text(head_elem.text) if head_elem else ""
-    
-    # Skip reserved parts
-    if any(keyword in part_name for keyword in RESERVED_KEYWORDS):
-        return
+        # Create components and node for this level
+        level_type = div_type.lower()
+        div_components = parent_components + [(level_type, div_num)]
+        div_id = create_hierarchical_id(div_components)
+        div_citation = create_citation(div_components)
+        div_link = create_link(div_components)
         
-    part_components = parent_components + [("part", part_num)]
-    part_id = create_hierarchical_id(part_components)
-    part_citation = create_citation(part_components)
-    part_link = create_link(part_components)
-    
-    part_node = Node(
-        id=part_id,
-        citation=part_citation,
-        link=part_link,
-        node_type="structure",
-        level_type="part",
-        number=part_num,
-        node_name=part_name,
-        parent=parent_id,
-        top_level_title=title_num
-    )
-    nodes.append(part_node)
-    
-    # Process sections (DIV8)
-    for section in part.find_all("DIV8", {"TYPE": "SECTION"}, recursive=False):
-        section_num = section.get("N", "")
-        head_elem = section.find("HEAD")
-        section_name = clean_text(head_elem.text) if head_elem else ""
+        # Key change: Determine node_type based on level_type, not content
+        if level_type in ["section", "appendix"]:
+            # Extract content for sections and appendices
+            content_elements = div.find_all(["P", "AUTH", "SOURCE", "CITA"])
+            content = "\n\n".join(clean_text(elem.text) for elem in content_elements if clean_text(elem.text))
+            
+            # Add word count to metadata
+            metadata = {
+                'word_count': len(content.split()) if content else 0
+            }
+            
+            div_node = Node(
+                id=div_id,
+                citation=div_citation,
+                link=div_link,
+                node_type="content",  # Always content for sections/appendix
+                level_type=level_type,
+                number=div_num,
+                node_name=div_name,
+                content=content,
+                parent=parent_id,
+                top_level_title=title_num,
+                metadata=metadata
+            )
+        else:
+            # All other types are structure nodes
+            div_node = Node(
+                id=div_id,
+                citation=div_citation,
+                link=div_link,
+                node_type="structure",  # Always structure for non-section/appendix
+                level_type=level_type,
+                number=div_num,
+                node_name=div_name,
+                parent=parent_id,
+                top_level_title=title_num
+            )
         
-        section_components = part_components + [("section", section_num)]
-        section_id = create_hierarchical_id(section_components)
-        section_citation = create_citation(section_components)
-        section_link = create_link(section_components)
+        nodes.append(div_node)
         
-        # Extract section content
-        content_elements = section.find_all(["P", "AUTH", "SOURCE", "CITA"])
-        content = "\n\n".join(clean_text(elem.text) for elem in content_elements if clean_text(elem.text))
+        # Process children recursively
+        process_children(div, div_components, div_id, title_num, nodes)
         
-        # Add word count to metadata
-        metadata = {
-            'word_count': len(content.split()) if content else 0
-        }
-        
-        section_node = Node(
-            id=section_id,
-            citation=section_citation,
-            link=section_link,
-            node_type="content",
-            level_type="section",
-            number=section_num,
-            node_name=section_name,
-            content=content,
-            parent=part_id,
-            top_level_title=title_num,
-            metadata=metadata
-        )
-        nodes.append(section_node)
-        section.decompose()  # Free memory after processing
+        # Free memory after processing
+        div.decompose()
 
 def process_all_titles(date=None):
     """
