@@ -144,15 +144,16 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
         # Use BeautifulSoup for parsing
         soup = BeautifulSoup(xml_content, "xml")
         
-        # Extract title information
-        title_element = soup.find("TITLE")
+        # Extract title information from DIV1 element
+        title_element = soup.find("DIV1", {"TYPE": "TITLE"})
         if not title_element:
             print(f"No TITLE element found in {xml_file_path}")
             return []
         
         # Extract title number and name
-        title_num = title_element.get("titlenum", "")
-        title_name = clean_text(title_element.get("heading", ""))
+        title_num = title_element.get("N", "")
+        head_elem = title_element.find("HEAD")
+        title_name = clean_text(head_elem.text) if head_elem else ""
         
         # Create the title node
         title_components = [("title", title_num)]
@@ -167,7 +168,7 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
             node_type="structure",
             level_type="title",
             number=title_num,
-            node_name=f"Title {title_num} - {title_name}",
+            node_name=title_name,
             top_level_title=title_num
         )
         
@@ -186,118 +187,55 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
         return []
 
 def process_children(parent_element, parent_components, parent_id, title_num, nodes):
-    """
-    Recursively process child elements
-    
-    Args:
-        parent_element: The parent XML element
-        parent_components: List of (level_type, number) tuples for the parent
-        parent_id: The parent node ID
-        title_num: The title number
-        nodes: List to append nodes to
-    """
+    """Process child elements recursively"""
     if not parent_element:
         return
-    
-    # Process chapters if present
-    for chapter in parent_element.find_all("CHAPTER", recursive=False):
-        process_chapter(chapter, parent_components, parent_id, title_num, nodes)
-    
-    # Process parts directly under title if present
-    for part in parent_element.find_all("PART", recursive=False):
-        process_part(part, parent_components, parent_id, title_num, nodes)
-
-def process_chapter(chapter, parent_components, parent_id, title_num, nodes):
-    """Process a chapter element"""
-    chapter_num = chapter.get("chapternum", "")
-    chapter_name = clean_text(chapter.get("heading", ""))
-    
-    # Check if reserved
-    reserved = None
-    for keyword in RESERVED_KEYWORDS:
-        if keyword in chapter_name:
-            reserved = "reserved"
-            break
-    
-    # Create chapter components and ID
-    chapter_components = parent_components + [("chapter", chapter_num)]
-    chapter_id = create_hierarchical_id(chapter_components)
-    chapter_citation = create_citation(chapter_components)
-    chapter_link = create_link(chapter_components)
-    
-    chapter_node = Node(
-        id=chapter_id,
-        citation=chapter_citation,
-        link=chapter_link,
-        node_type="structure",
-        level_type="chapter",
-        number=chapter_num,
-        node_name=chapter_name,
-        parent=parent_id,
-        top_level_title=title_num,
-        reserved=reserved
-    )
-    
-    nodes.append(chapter_node)
-    
-    # Process subchapters if present
-    for subchapter in chapter.find_all("SUBCHAP", recursive=False):
-        process_subchapter(subchapter, chapter_components, chapter_id, title_num, nodes)
-    
-    # Process parts under chapter
-    for part in chapter.find_all("PART", recursive=False):
-        process_part(part, chapter_components, chapter_id, title_num, nodes)
-
-def process_subchapter(subchapter, parent_components, parent_id, title_num, nodes):
-    """Process a subchapter element"""
-    subchapter_num = subchapter.get("subchapnum", "")
-    subchapter_name = clean_text(subchapter.get("heading", ""))
-    
-    # Check if reserved
-    reserved = None
-    for keyword in RESERVED_KEYWORDS:
-        if keyword in subchapter_name:
-            reserved = "reserved"
-            break
-    
-    # Create subchapter components and ID
-    subchapter_components = parent_components + [("subchapter", subchapter_num)]
-    subchapter_id = create_hierarchical_id(subchapter_components)
-    subchapter_citation = create_citation(subchapter_components)
-    subchapter_link = create_link(subchapter_components)
-    
-    subchapter_node = Node(
-        id=subchapter_id,
-        citation=subchapter_citation,
-        link=subchapter_link,
-        node_type="structure",
-        level_type="subchapter",
-        number=subchapter_num,
-        node_name=subchapter_name,
-        parent=parent_id,
-        top_level_title=title_num,
-        reserved=reserved
-    )
-    
-    nodes.append(subchapter_node)
-    
-    # Process parts under subchapter
-    for part in subchapter.find_all("PART", recursive=False):
-        process_part(part, subchapter_components, subchapter_id, title_num, nodes)
+        
+    # Process chapters (DIV3)
+    for chapter in parent_element.find_all("DIV3", {"TYPE": "CHAPTER"}, recursive=False):
+        chapter_num = chapter.get("N", "")
+        head_elem = chapter.find("HEAD")
+        chapter_name = clean_text(head_elem.text) if head_elem else ""
+        
+        chapter_components = parent_components + [("chapter", chapter_num)]
+        chapter_id = create_hierarchical_id(chapter_components)
+        chapter_citation = create_citation(chapter_components)
+        chapter_link = create_link(chapter_components)
+        
+        chapter_node = Node(
+            id=chapter_id,
+            citation=chapter_citation,
+            link=chapter_link,
+            node_type="structure",
+            level_type="chapter",
+            number=chapter_num,
+            node_name=chapter_name,
+            parent=parent_id,
+            top_level_title=title_num
+        )
+        nodes.append(chapter_node)
+        
+        # Process parts (DIV5) - can be under chapter or subchapter
+        parts = chapter.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
+        for part in parts:
+            process_part(part, chapter_components, chapter_id, title_num, nodes)
+            
+        # Also check for parts under subchapters
+        for subchap in chapter.find_all("DIV4", {"TYPE": "SUBCHAP"}, recursive=False):
+            subchap_parts = subchap.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
+            for part in subchap_parts:
+                process_part(part, chapter_components, chapter_id, title_num, nodes)
 
 def process_part(part, parent_components, parent_id, title_num, nodes):
     """Process a part element"""
-    part_num = part.get("partnum", "")
-    part_name = clean_text(part.get("heading", ""))
+    part_num = part.get("N", "")
+    head_elem = part.find("HEAD")
+    part_name = clean_text(head_elem.text) if head_elem else ""
     
-    # Check if reserved
-    reserved = None
-    for keyword in RESERVED_KEYWORDS:
-        if keyword in part_name:
-            reserved = "reserved"
-            break
-    
-    # Create part components and ID
+    # Skip reserved parts
+    if any(keyword in part_name for keyword in RESERVED_KEYWORDS):
+        return
+        
     part_components = parent_components + [("part", part_num)]
     part_id = create_hierarchical_id(part_components)
     part_citation = create_citation(part_components)
@@ -312,114 +250,38 @@ def process_part(part, parent_components, parent_id, title_num, nodes):
         number=part_num,
         node_name=part_name,
         parent=parent_id,
-        top_level_title=title_num,
-        reserved=reserved
+        top_level_title=title_num
     )
-    
     nodes.append(part_node)
     
-    # Process subparts if present
-    for subpart in part.find_all("SUBPART", recursive=False):
-        process_subpart(subpart, part_components, part_id, title_num, nodes)
-    
-    # Process sections directly under part
-    for section in part.find_all("SECTION", recursive=False):
-        process_section(section, part_components, part_id, title_num, nodes)
-
-def process_subpart(subpart, parent_components, parent_id, title_num, nodes):
-    """Process a subpart element"""
-    subpart_num = subpart.get("subpartnum", "")
-    subpart_name = clean_text(subpart.get("heading", ""))
-    
-    # Check if reserved
-    reserved = None
-    for keyword in RESERVED_KEYWORDS:
-        if keyword in subpart_name:
-            reserved = "reserved"
-            break
-    
-    # Create subpart components and ID
-    subpart_components = parent_components + [("subpart", subpart_num)]
-    subpart_id = create_hierarchical_id(subpart_components)
-    subpart_citation = create_citation(subpart_components)
-    subpart_link = create_link(subpart_components)
-    
-    subpart_node = Node(
-        id=subpart_id,
-        citation=subpart_citation,
-        link=subpart_link,
-        node_type="structure",
-        level_type="subpart",
-        number=subpart_num,
-        node_name=subpart_name,
-        parent=parent_id,
-        top_level_title=title_num,
-        reserved=reserved
-    )
-    
-    nodes.append(subpart_node)
-    
-    # Process sections under subpart
-    for section in subpart.find_all("SECTION", recursive=False):
-        process_section(section, subpart_components, subpart_id, title_num, nodes)
-
-def process_section(section, parent_components, parent_id, title_num, nodes):
-    """Process a section element"""
-    section_num = section.get("sectnum", "")
-    section_subject = clean_text(section.get("subject", ""))
-    
-    # Check if reserved
-    reserved = None
-    for keyword in RESERVED_KEYWORDS:
-        if keyword in section_subject:
-            reserved = "reserved"
-            break
-    
-    # Create section components and ID
-    section_components = parent_components + [("section", section_num)]
-    section_id = create_hierarchical_id(section_components)
-    section_citation = create_citation(section_components)
-    section_link = create_link(section_components)
-    
-    # Extract section content
-    content = None
-    word_count = 0
-    
-    if reserved != "reserved":
-        # Get all content from the section
-        content_elements = section.find_all(["P", "FP"])
-        content_texts = []
+    # Process sections (DIV8)
+    for section in part.find_all("DIV8", {"TYPE": "SECTION"}, recursive=False):
+        section_num = section.get("N", "")
+        head_elem = section.find("HEAD")
+        section_name = clean_text(head_elem.text) if head_elem else ""
         
-        for element in content_elements:
-            text = clean_text(element.get_text())
-            if text:
-                content_texts.append(text)
+        section_components = part_components + [("section", section_num)]
+        section_id = create_hierarchical_id(section_components)
+        section_citation = create_citation(section_components)
+        section_link = create_link(section_components)
         
-        if content_texts:
-            content = "\n\n".join(content_texts)
-            word_count = len(content.split())
-    
-    # Create metadata with metrics
-    metadata = {
-        "word_count": word_count
-    }
-    
-    section_node = Node(
-        id=section_id,
-        citation=section_citation,
-        link=section_link,
-        node_type="content",
-        level_type="section",
-        number=section_num,
-        node_name=f"§ {section_num} {section_subject}",
-        parent=parent_id,
-        top_level_title=title_num,
-        reserved=reserved,
-        content=content,
-        metadata=metadata
-    )
-    
-    nodes.append(section_node)
+        # Extract section content
+        content_elements = section.find_all(["P", "AUTH", "SOURCE", "CITA"])
+        content = "\n\n".join(clean_text(elem.text) for elem in content_elements if clean_text(elem.text))
+        
+        section_node = Node(
+            id=section_id,
+            citation=section_citation,
+            link=section_link,
+            node_type="content",
+            level_type="section",
+            number=section_num,
+            node_name=section_name,
+            content=content,
+            parent=parent_id,
+            top_level_title=title_num
+        )
+        nodes.append(section_node)
 
 def process_all_titles(date=None):
     """
