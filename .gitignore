@@ -4,3 +4,4 @@ data/processed/
 __pycache__/
 *.pyc
 .env
+application_octet-stream_title-1.xml

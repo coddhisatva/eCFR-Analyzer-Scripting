@@ -9,6 +9,7 @@ import time
 from tqdm import tqdm
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import argparse
 
 # Directory to store downloaded XML files
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
@@ -114,5 +115,14 @@ def download_all_titles(date=None, excluded_titles=[35]):
     return downloaded_files
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download CFR XML files from the eCFR API")
+    parser.add_argument("--title", type=int, help="Specific title number to download")
+    args = parser.parse_args()
+
     ensure_directory_exists(RAW_DATA_DIR)
-    download_all_titles()
+
+    if args.title:
+        print(f"Downloading specific title: {args.title}")
+        download_title_xml(args.title)
+    else:
+        download_all_titles()
