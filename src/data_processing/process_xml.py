@@ -10,6 +10,11 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 import html
 import traceback
+import logging
+
+# Set up basic logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import models
 from src.models.node import Node
@@ -134,7 +139,7 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
     Returns:
         List of node entities to be stored in the database
     """
-    print(f"Processing {xml_file_path}...")
+    logger.info(f"Starting to process {xml_file_path}")
     
     # Parse the XML file
     try:
@@ -147,7 +152,7 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
         # Extract title information from DIV1 element
         title_element = soup.find("DIV1", {"TYPE": "TITLE"})
         if not title_element:
-            print(f"No TITLE element found in {xml_file_path}")
+            logger.error(f"No TITLE element found in {xml_file_path}")
             return []
         
         # Extract title number and name
@@ -178,12 +183,12 @@ def process_title_xml(xml_file_path: str) -> List[Node]:
         # Process the hierarchy recursively
         process_children(title_element, title_components, title_id, title_num, nodes)
         
-        print(f"Processed {len(nodes)} nodes from {xml_file_path}")
+        logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes")
         return nodes
     
     except Exception as e:
-        print(f"Error processing {xml_file_path}: {e}")
-        traceback.print_exc()
+        logger.error(f"Error processing {xml_file_path}: {e}")
+        logger.error(traceback.format_exc())
         return []
 
 def process_children(parent_element, parent_components, parent_id, title_num, nodes):
@@ -192,7 +197,9 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         return
         
     # Process chapters (DIV3)
+    logger.info(f"Looking for chapters in {parent_components}")
     for chapter in parent_element.find_all("DIV3", {"TYPE": "CHAPTER"}, recursive=False):
+        logger.info(f"Processing chapter {chapter.get('N', '')}")
         chapter_num = chapter.get("N", "")
         head_elem = chapter.find("HEAD")
         chapter_name = clean_text(head_elem.text) if head_elem else ""
@@ -232,6 +239,7 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
 
 def process_part(part, parent_components, parent_id, title_num, nodes):
     """Process a part element"""
+    logger.info(f"Processing part {part.get('N', '')}")
     part_num = part.get("N", "")
     head_elem = part.find("HEAD")
     part_name = clean_text(head_elem.text) if head_elem else ""
