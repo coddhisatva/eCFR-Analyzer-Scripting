@@ -219,12 +219,16 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         parts = chapter.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
         for part in parts:
             process_part(part, chapter_components, chapter_id, title_num, nodes)
+            part.decompose()  # Free memory after processing
             
         # Also check for parts under subchapters
         for subchap in chapter.find_all("DIV4", {"TYPE": "SUBCHAP"}, recursive=False):
             subchap_parts = subchap.find_all("DIV5", {"TYPE": "PART"}, recursive=False)
             for part in subchap_parts:
                 process_part(part, chapter_components, chapter_id, title_num, nodes)
+                part.decompose()  # Free memory after processing
+        
+        chapter.decompose()  # Free memory after processing
 
 def process_part(part, parent_components, parent_id, title_num, nodes):
     """Process a part element"""
@@ -288,6 +292,7 @@ def process_part(part, parent_components, parent_id, title_num, nodes):
             metadata=metadata
         )
         nodes.append(section_node)
+        section.decompose()  # Free memory after processing
 
 def process_all_titles(date=None):
     """
