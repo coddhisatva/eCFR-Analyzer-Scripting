@@ -43,41 +43,83 @@ def parse_date(date_str: str) -> datetime:
             logger.warning(f"Could not parse date: {date_str}")
             return datetime.now()
 
-def process_correction_data(correction_data: Dict[str, Any]) -> Correction:
+def build_node_id(hierarchy: Dict[str, str]) -> str:
     """
-    Process correction data into a Correction entity
+    Build a node ID from the hierarchy data.
+    Format: title-X/chapter-Y/subchap-Z/part-W/section-V
+    """
+    parts = []
+    
+    # Add title
+    if 'title' in hierarchy:
+        parts.append(f"title-{hierarchy['title']}")
+    
+    # Add chapter
+    if 'chapter' in hierarchy:
+        parts.append(f"chapter-{hierarchy['chapter']}")
+    
+    # Add subchapter (converted to subchap)
+    if 'subchapter' in hierarchy:
+        parts.append(f"subchap-{hierarchy['subchapter']}")
+    
+    # Add part
+    if 'part' in hierarchy:
+        parts.append(f"part-{hierarchy['part']}")
+    
+    # Add subpart if present
+    if 'subpart' in hierarchy:
+        parts.append(f"subpart-{hierarchy['subpart']}")
+    
+    # Add section
+    if 'section' in hierarchy:
+        parts.append(f"section-{hierarchy['section']}")
+    
+    return '/'.join(parts)
+
+def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]:
+    """
+    Process correction data into Correction entities
     
     Args:
         correction_data: Dictionary containing correction data
         
     Returns:
-        Correction entity
+        List of Correction entities (one for each CFR reference)
     """
-    # Extract dates
+    corrections = []
+    
+    # Extract common correction data
     error_corrected = parse_date(correction_data.get('error_corrected', ''))
     error_occurred = parse_date(correction_data.get('error_occurred', ''))
-    
-    # Calculate correction duration in days
     correction_duration = (error_corrected - error_occurred).days if error_corrected and error_occurred else None
     
-    # Create correction entity
-    correction = Correction(
-        node_id=correction_data.get('node_id'),
-        title=correction_data.get('title', ''),
-        corrective_action=clean_text(correction_data.get('corrective_action', '')),
-        error_corrected=error_corrected,
-        error_occurred=error_occurred,
-        correction_duration=correction_duration,
-        fr_citation=clean_text(correction_data.get('fr_citation', '')),
-        position=clean_text(correction_data.get('position', '')),
-        year=correction_data.get('year'),
-        metadata={
-            'notes': clean_text(correction_data.get('notes', '')),
-            'last_updated': datetime.now().isoformat()
-        }
-    )
+    # Process each CFR reference
+    for cfr_ref in correction_data.get('cfr_references', []):
+        # Build node_id from hierarchy
+        hierarchy = cfr_ref.get('hierarchy', {})
+        node_id = build_node_id(hierarchy)
+        
+        # Create correction entity
+        correction = Correction(
+            node_id=node_id,
+            title=correction_data.get('title', ''),
+            corrective_action=clean_text(correction_data.get('corrective_action', '')),
+            error_corrected=error_corrected,
+            error_occurred=error_occurred,
+            correction_duration=correction_duration,
+            fr_citation=clean_text(correction_data.get('fr_citation', '')),
+            position=clean_text(correction_data.get('position', '')),
+            year=correction_data.get('year'),
+            metadata={
+                'cfr_reference': clean_text(cfr_ref.get('cfr_reference', '')),
+                'last_modified': correction_data.get('last_modified'),
+                'display_in_toc': correction_data.get('display_in_toc'),
+                'last_updated': datetime.now().isoformat()
+            }
+        )
+        corrections.append(correction)
     
-    return correction
+    return corrections
 
 def process_corrections_file(file_path: str):
     """
@@ -93,14 +135,14 @@ def process_corrections_file(file_path: str):
             data = json.load(f)
         
         # Process corrections
-        corrections = []
-        for correction_data in data.get('corrections', []):
-            correction = process_correction_data(correction_data)
-            corrections.append(correction)
+        all_corrections = []
+        for correction_data in data.get('ecfr_corrections', []):
+            corrections = process_correction_data(correction_data)
+            all_corrections.extend(corrections)
         
-        if corrections:
-            insert_corrections(corrections)
-            logger.info(f"Inserted {len(corrections)} corrections")
+        if all_corrections:
+            insert_corrections(all_corrections)
+            logger.info(f"Inserted {len(all_corrections)} corrections")
         
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}")
