@@ -159,7 +159,7 @@ def split_content_into_chunks(content: str, section_id: str) -> List[ContentChun
     chunks = []
     current_chunk = []
     current_size = 0
-    chunk_number = 1
+    chunk_number = 0
     
     # Split content into paragraphs
     paragraphs = content.split('\n\n')

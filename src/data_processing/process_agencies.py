@@ -83,7 +83,7 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     # Extract basic agency information
     agency_id = agency_data.get('slug')  # Changed from 'id' to 'slug'
     if not agency_id:
-        logger.warning("Skipping agency without slug")
+        logger.warning(f"Skipping agency without slug: {agency_data.get('name', 'Unknown')}")
         return []
     
     # Determine if this is a root agency
@@ -135,6 +135,7 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
     references = []
     
     for i, ref_data in enumerate(references_data):
+        # Get title number
         title = ref_data.get('title')
         if not title:
             continue
@@ -146,7 +147,12 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
             
         node_id = build_node_id(title, subheading)
         
+        # Generate a unique ID using a hash of the agency_id and node_id
+        # This ensures uniqueness while being deterministic
+        unique_id = abs(hash(f"{agency_id}:{node_id}:{i}")) % (2**31)  # Ensure positive 32-bit integer
+        
         reference = CFRReference(
+            id=unique_id,
             agency_id=agency_id,
             title=title,
             subheading=clean_text(subheading),
@@ -169,8 +175,10 @@ def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str,
         List of AgencyNodeMapping entities
     """
     mappings = []
+    seen_nodes = set()
     
-    for ref_data in references_data:
+    for i, ref_data in enumerate(references_data):
+        # Get title number
         title = ref_data.get('title')
         if not title:
             continue
@@ -182,14 +190,23 @@ def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str,
             
         node_id = build_node_id(title, subheading)
         
+        # Skip if we've already seen this node
+        if node_id in seen_nodes:
+            continue
+        seen_nodes.add(node_id)
+        
+        # Generate a unique ID using a hash of the agency_id and node_id
+        # This ensures uniqueness while being deterministic
+        unique_id = abs(hash(f"mapping:{agency_id}:{node_id}")) % (2**31)  # Ensure positive 32-bit integer
+        
         mapping = AgencyNodeMapping(
+            id=unique_id,
             agency_id=agency_id,
             node_id=node_id,
-            metadata={
-                'title': title,
-                'subheading': clean_text(subheading),
-                'last_updated': datetime.now().isoformat()
-            }
+            is_primary=True,  # These are direct references
+            is_direct_reference=True,
+            relationship_type='regulatory',  # Default to regulatory relationship
+            num_cfr_refs=1  # Each mapping represents one reference
         )
         mappings.append(mapping)
     
@@ -208,22 +225,37 @@ def process_agency_file(file_path: str):
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        # Get the agencies array from the data
+        agencies_data = data.get('agencies', [])
+        if not agencies_data:
+            logger.error(f"No agencies found in {file_path}")
+            return
+        
         # Process agencies
-        agencies = process_agency_data(data)
+        agencies = []
+        for agency_data in agencies_data:
+            agency_list = process_agency_data(agency_data)
+            agencies.extend(agency_list)
+        
         if agencies:
             insert_agencies(agencies)
             logger.info(f"Inserted {len(agencies)} agencies")
         
         # Get CFR references for each agency
         for agency in agencies:
+            # Find the original agency data
+            agency_data = next((a for a in agencies_data if a.get('slug') == agency.id), None)
+            if not agency_data:
+                continue
+                
             # Process CFR references
-            references = process_cfr_references(agency.id, data.get('cfr_references', []))
+            references = process_cfr_references(agency.id, agency_data.get('cfr_references', []))
             if references:
                 insert_cfr_references(references)
                 logger.info(f"Inserted {len(references)} CFR references for agency {agency.id}")
             
             # Process agency-node mappings from the same references
-            mappings = process_agency_node_mappings(agency.id, data.get('cfr_references', []))
+            mappings = process_agency_node_mappings(agency.id, agency_data.get('cfr_references', []))
             if mappings:
                 insert_agency_node_mappings(mappings)
                 logger.info(f"Inserted {len(mappings)} agency-node mappings for agency {agency.id}")

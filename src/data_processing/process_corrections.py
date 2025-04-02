@@ -95,14 +95,18 @@ def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]
     correction_duration = (error_corrected - error_occurred).days if error_corrected and error_occurred else None
     
     # Process each CFR reference
-    for cfr_ref in correction_data.get('cfr_references', []):
+    for i, cfr_ref in enumerate(correction_data.get('cfr_references', [])):
         # Build node_id from hierarchy
         hierarchy = cfr_ref.get('hierarchy', {})
         node_id = build_node_id(hierarchy)
         
+        # Generate a unique ID using a hash of the node_id and index
+        # This ensures uniqueness while being deterministic
+        unique_id = abs(hash(f"correction:{node_id}:{i}")) % (2**31)  # Ensure positive 32-bit integer
+        
         # Create correction entity
         correction = Correction(
-            id=correction_data.get('id'),  # Get ID from input data
+            id=unique_id,
             node_id=node_id,
             title=correction_data.get('title', ''),
             corrective_action=clean_text(correction_data.get('corrective_action', '')),
