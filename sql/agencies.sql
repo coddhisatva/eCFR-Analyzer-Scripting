@@ -1,3 +1,7 @@
+DROP TABLE IF EXISTS agencies CASCADE;
+DROP TABLE IF EXISTS cfr_references CASCADE;
+DROP TABLE IF EXISTS agency_node_mappings CASCADE;
+
 CREATE TABLE agencies (
     id TEXT PRIMARY KEY,  -- Using slug as ID for readability
     name TEXT NOT NULL,
@@ -7,7 +11,11 @@ CREATE TABLE agencies (
     parent_id TEXT REFERENCES agencies(id),  -- Hierarchical structure
     depth INTEGER DEFAULT 0,  -- Hierarchy depth (0 for top-level agencies)
     agency_type TEXT,  -- 'beg', 'middle', 'zed'
-    metadata JSONB  -- For flexible storage of additional data
+    metadata JSONB,  -- For flexible storage of additional data
+	num_children INTEGER DEFAULT 0,
+	num_words INTEGER DEFAULT 0,
+	num_sections INTEGER DEFAULT 0,
+	num_corrections INTEGER DEFAULT 0
 );
 
 -- Indexes for agency hierarchy navigation --
@@ -55,13 +63,13 @@ CREATE INDEX agency_node_mappings_agency_idx ON agency_node_mappings(agency_id);
 CREATE INDEX agency_node_mappings_node_idx ON agency_node_mappings(node_id);
 --hard part end ************---
 
--- Index for efficient querying on these metrics
-CREATE INDEX agencies_word_count_idx ON agencies(((metadata->'precomputed_metrics'->>'word_count')::int))
-WHERE metadata->'precomputed_metrics'->>'word_count' IS NOT NULL;
+-- order by numsections
+CREATE INDEX agencies_num_sections_idx ON agencies(num_sections);
 
-CREATE INDEX agencies_child_count_idx ON agencies(((metadata->'precomputed_metrics'->>'child_count')::int))
-WHERE metadata->'precomputed_metrics'->>'child_count' IS NOT NULL;;
+-- order by numwords
+CREATE INDEX agencies_num_words_idx ON agencies(num_words);
 
-
+-- order by numcorrections
+CREATE INDEX agencies_num_corrections_idx ON agencies(num_corrections);
 
 

@@ -15,11 +15,12 @@ CREATE TABLE nodes (
     number TEXT,                            -- Identifier for this level
     node_name TEXT,                         -- Display name
     parent TEXT,                            -- Parent node ID
-    top_level_title INTEGER,
-    depth INTEGER,                   -- Title number this belongs to
+    top_level_title INTEGER,                -- Title number this belongs to
+    depth INTEGER,                   
     display_order INTEGER,                   -- Order of the node in the title
     reserved TEXT,                          -- For 'reserved' sections
-    metadata JSONB                          -- Additional metadata (word counts, etc.)
+    metadata JSONB,
+    num_corrections INTEGER DEFAULT 0                         -- Additional metadata (word counts, etc.)
 );
 
 -- Create the content_chunks table (for storing large content)

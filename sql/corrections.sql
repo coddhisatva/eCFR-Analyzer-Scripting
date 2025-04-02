@@ -1,10 +1,11 @@
 CREATE TABLE corrections (
     id SERIAL PRIMARY KEY,
-    node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+    node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
     title INTEGER NOT NULL,
     corrective_action TEXT,
     error_corrected DATE,
     error_occurred DATE,
+	correction_duration INTEGER,
     fr_citation TEXT,
     position INTEGER,
     year INTEGER,
@@ -20,3 +21,9 @@ CREATE INDEX corrections_occurred_idx ON corrections(error_occurred);
 
 -- Index for finding corrections by title
 CREATE INDEX corrections_title_idx ON corrections(title);
+
+--longest correction duration
+CREATE INDEX corrections_duration_idx ON corrections(correction_duration);
+
+
+
