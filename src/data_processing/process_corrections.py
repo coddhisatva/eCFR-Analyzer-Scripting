@@ -47,33 +47,42 @@ def parse_date(date_str: str) -> datetime:
 def build_node_id(hierarchy: Dict[str, str]) -> str:
     """
     Build a node ID from the hierarchy data.
-    Format: title-X/chapter-Y/subchap-Z/part-W/section-V
+    Format: us/federal/ecfr/title=X/chapter=Y/subchap=Z/part=W/section=V
     """
-    parts = []
+    parts = ["us", "federal", "ecfr"]
     
     # Add title
     if 'title' in hierarchy:
-        parts.append(f"title-{hierarchy['title']}")
+        parts.append(f"title={hierarchy['title']}")
     
     # Add chapter
     if 'chapter' in hierarchy:
-        parts.append(f"chapter-{hierarchy['chapter']}")
+        parts.append(f"chapter={hierarchy['chapter']}")
     
     # Add subchapter (converted to subchap)
     if 'subchapter' in hierarchy:
-        parts.append(f"subchap-{hierarchy['subchapter']}")
+        parts.append(f"subchap={hierarchy['subchapter']}")
     
     # Add part
     if 'part' in hierarchy:
-        parts.append(f"part-{hierarchy['part']}")
+        parts.append(f"part={hierarchy['part']}")
+    elif 'section' in hierarchy:
+        # If we have a section but no part, try to infer the part number
+        section = hierarchy['section'].strip().strip('-').strip()
+        if '.' in section:
+            # Part number is everything before the dot
+            part = section.split('.')[0]
+            parts.append(f"part={part}")
     
     # Add subpart if present
     if 'subpart' in hierarchy:
-        parts.append(f"subpart-{hierarchy['subpart']}")
+        parts.append(f"subpart={hierarchy['subpart']}")
     
     # Add section
     if 'section' in hierarchy:
-        parts.append(f"section-{hierarchy['section']}")
+        # Clean up section number by removing whitespace and dashes
+        section = hierarchy['section'].strip().strip('-').strip()
+        parts.append(f"section={section}")
     
     return '/'.join(parts)
 

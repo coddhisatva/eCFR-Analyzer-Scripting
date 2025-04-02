@@ -5,29 +5,56 @@ A tool for downloading, processing, and analyzing the Electronic Code of Federal
 ## Setup
 
 1. Create a virtual environment and activate it:
-
+```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
 2. Install dependencies:
+```bash
 pip install -r requirements.txt
+```
 
 3. Copy `.env.example` to `.env` and fill in your Supabase credentials:
+```bash
 cp .env.example .env
+```
 
 ## Usage
 
-### Download CFR XML data:
-python src/main.py --download
+### Process a specific title:
 
-### Process XML data into database:
-python src/main.py --process
+1. Process XML data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_xml.py data/raw/titles/2025-03-31/title-5.xml
+```
 
-### Download and process a specific title:
-python src/main.py --download --process --title 4
+2. Process agency data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_agencies.py data/raw/agencies/2025-03-31/agency-title-5.json
+```
 
-### Process data for a specific date:
-python src/main.py --process --date 2023-01-01
+3. Process corrections data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_corrections.py data/raw/corrections/2025-03-31/corrections-title-5.json
+```
+
+### Process all files for a specific date:
+
+1. Process all XML data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_xml.py data/raw/titles/2025-03-31/
+```
+
+2. Process all agency data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_agencies.py data/raw/agencies/2025-03-31/
+```
+
+3. Process all corrections data:
+```bash
+PYTHONPATH=/path/to/project python3 src/data_processing/process_corrections.py data/raw/corrections/2025-03-31/
+```
 
 ## Project Structure
 

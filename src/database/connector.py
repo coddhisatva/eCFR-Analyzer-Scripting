@@ -203,23 +203,35 @@ def insert_cfr_references(references: List[CFRReference]):
     """
     client = get_supabase_client()
     
+    # Track seen combinations to avoid duplicates
+    seen_refs = set()
+    unique_refs = []
+    
     # Convert references to dictionaries for insertion
-    reference_dicts = []
     for ref in references:
+        # Create a unique key for this reference
+        ref_key = (ref.agency_id, ref.node_id)
+        
+        # Skip if we've seen this combination before
+        if ref_key in seen_refs:
+            print(f"WARNING: Skipping duplicate CFR reference: agency={ref.agency_id}, node={ref.node_id}")
+            continue
+        
+        seen_refs.add(ref_key)
         ref_dict = {
+            'id': ref.id,
             'agency_id': ref.agency_id,
             'title': ref.title,
             'subheading': ref.subheading,
-            'is_primary': ref.is_primary,
             'ordinal': ref.ordinal,
             'node_id': ref.node_id
         }
-        reference_dicts.append(ref_dict)
+        unique_refs.append(ref_dict)
     
     # Insert references in batches
     batch_size = 100
-    for i in range(0, len(reference_dicts), batch_size):
-        batch = reference_dicts[i:i + batch_size]
+    for i in range(0, len(unique_refs), batch_size):
+        batch = unique_refs[i:i + batch_size]
         try:
             result = client.table('cfr_references').upsert(batch).execute()
             print(f"Inserted/updated batch of {len(batch)} CFR references")
@@ -230,35 +242,25 @@ def insert_cfr_references(references: List[CFRReference]):
                 print(f"Agency: {ref['agency_id']}, Title: {ref['title']}")
             raise
 
-def insert_agency_node_mappings(mappings: List[AgencyNodeMapping]):
-    """
-    Insert agency-node mappings into the database
-    
-    Args:
-        mappings: List of agency-node mapping entities to insert
-        
-    Returns:
-        Result of the insert operation
-    """
+def insert_agency_node_mappings(mappings: List[AgencyNodeMapping]) -> None:
+    """Insert agency-node mappings in batches"""
     client = get_supabase_client()
     
-    # Convert mappings to dictionaries for insertion
-    mapping_dicts = []
-    for mapping in mappings:
-        mapping_dict = {
+    # Convert mappings to dict format for insertion
+    mapping_data = [
+        {
+            'id': mapping.id,
             'agency_id': mapping.agency_id,
             'node_id': mapping.node_id,
-            'is_primary': mapping.is_primary,
-            'is_direct_reference': mapping.is_direct_reference,
-            'relationship_type': mapping.relationship_type,
             'metadata': mapping.metadata
         }
-        mapping_dicts.append(mapping_dict)
+        for mapping in mappings
+    ]
     
-    # Insert mappings in batches
+    # Process in batches of 100
     batch_size = 100
-    for i in range(0, len(mapping_dicts), batch_size):
-        batch = mapping_dicts[i:i + batch_size]
+    for i in range(0, len(mapping_data), batch_size):
+        batch = mapping_data[i:i + batch_size]
         try:
             result = client.table('agency_node_mappings').upsert(batch).execute()
             print(f"Inserted/updated batch of {len(batch)} agency-node mappings")

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from src.models.agency import Agency
 from src.models.cfr_reference import CFRReference
 from src.models.agency_node_mapping import AgencyNodeMapping
-from src.database.connector import insert_agencies, insert_cfr_references, insert_agency_node_mappings
+from src.database.connector import insert_agencies, insert_cfr_references, insert_agency_node_mappings, get_supabase_client
 
 # Directory for raw and processed data
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
@@ -34,26 +34,51 @@ def clean_text(text: str) -> str:
         return ""
     return text.strip()
 
+def roman_to_arabic(roman: str) -> int:
+    """Convert Roman numeral to Arabic numeral."""
+    roman_values = {
+        'I': 1, 'V': 5, 'X': 10, 'L': 50,
+        'C': 100, 'D': 500, 'M': 1000
+    }
+    
+    result = 0
+    prev_value = 0
+    
+    for char in reversed(roman.upper()):
+        curr_value = roman_values[char]
+        if curr_value >= prev_value:
+            result += curr_value
+        else:
+            result -= curr_value
+        prev_value = curr_value
+    
+    return result
+
 def build_node_id(title: int, subheading: str) -> str:
     """
     Build a node ID from title and subheading.
     Handles different subheading types and formats.
     """
     # Convert subheading type to node format
-    subheading = subheading.lower()
-    if subheading.startswith('subchapter'):
-        subheading = 'subchap' + subheading[9:]  # Remove 'subchapter' and keep the rest
+    subheading = subheading.upper()
     
-    # Handle word-number format
-    parts = subheading.split('-')
-    if len(parts) > 1:
-        # If it's already in word-number format, use as is
-        formatted_subheading = subheading
+    # Handle chapter format
+    if subheading.startswith('CHAPTER'):
+        parts = subheading.split(' ', 1)
+        if len(parts) > 1:
+            number = parts[1]
     else:
-        # If it's just a number/letter, format as "type-number"
-        formatted_subheading = f"{subheading}-{parts[0]}"
+        number = subheading
     
-    return f"title-{title}/{formatted_subheading}"
+    # Create components list like XML processing
+    components = [("title", str(title)), ("chapter", number)]
+    
+    # Build hierarchical ID
+    parts = ["us", "federal", "ecfr"]
+    for level, num in components:
+        parts.append(f"{level}={num}")
+    
+    return "/".join(parts)
 
 def determine_agency_type(agency_data: Dict[str, Any], is_root: bool) -> str:
     """
@@ -242,6 +267,8 @@ def process_agency_file(file_path: str):
             logger.info(f"Inserted {len(agencies)} agencies")
         
         # Get CFR references for each agency
+        all_references = []
+        all_mappings = []
         for agency in agencies:
             # Find the original agency data
             agency_data = next((a for a in agencies_data if a.get('slug') == agency.id), None)
@@ -251,14 +278,31 @@ def process_agency_file(file_path: str):
             # Process CFR references
             references = process_cfr_references(agency.id, agency_data.get('cfr_references', []))
             if references:
-                insert_cfr_references(references)
-                logger.info(f"Inserted {len(references)} CFR references for agency {agency.id}")
+                all_references.extend(references)
             
             # Process agency-node mappings from the same references
             mappings = process_agency_node_mappings(agency.id, agency_data.get('cfr_references', []))
             if mappings:
-                insert_agency_node_mappings(mappings)
-                logger.info(f"Inserted {len(mappings)} agency-node mappings for agency {agency.id}")
+                all_mappings.extend(mappings)
+        
+        # Delete existing references and mappings for these agencies
+        client = get_supabase_client()
+        agency_ids = [agency.id for agency in agencies]
+        for agency_id in agency_ids:
+            try:
+                client.table('cfr_references').delete().eq('agency_id', agency_id).execute()
+                client.table('agency_node_mappings').delete().eq('agency_id', agency_id).execute()
+            except Exception as e:
+                logger.warning(f"Error deleting existing references for agency {agency_id}: {e}")
+        
+        # Insert new references and mappings
+        if all_references:
+            insert_cfr_references(all_references)
+            logger.info(f"Inserted {len(all_references)} CFR references")
+        
+        if all_mappings:
+            insert_agency_node_mappings(all_mappings)
+            logger.info(f"Inserted {len(all_mappings)} agency-node mappings")
         
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}")
