@@ -426,7 +426,31 @@ def process_all_titles(date=None):
             continue
         
         file_path = os.path.join(input_dir, filename)
-        process_title_xml(file_path)
+        try:
+            nodes, chunks = process_title_xml(file_path)
+            
+            if nodes:
+                # Write processed nodes to file for backup
+                title_num = nodes[0].number if nodes else "unknown"
+                output_file = os.path.join(PROCESSED_DATA_DIR, f"title-{title_num}-processed.txt")
+                
+                with open(output_file, "w", encoding="utf-8") as f:
+                    for node in nodes:
+                        f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
+                
+                # Insert nodes and chunks into database
+                try:
+                    insert_nodes(nodes)
+                    if chunks:
+                        insert_content_chunks(chunks)
+                    logger.info(f"Successfully inserted {len(nodes)} nodes and {len(chunks)} chunks from {filename}")
+                except Exception as e:
+                    logger.error(f"Database error processing {filename}: {str(e)}")
+                    logger.error(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Error processing {filename}: {str(e)}")
+            logger.error(traceback.format_exc())
+            continue
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process CFR XML files')
