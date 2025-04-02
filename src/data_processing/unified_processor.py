@@ -225,8 +225,9 @@ class UnifiedProcessor:
             # Calculate actual children count
             actual_children = len(self.agency_by_parent[agency_id])
             
-            # Calculate actual CFR count
+            # Calculate actual CFR counts
             actual_cfr = len([ref for ref in self.cfr_references if ref.agency_id == agency_id])
+            actual_cfr_refs = len([m for m in self.agency_node_mappings if m.agency_id == agency_id])
             
             # Compare with stored metrics
             if agency.num_sections != actual_sections:
@@ -243,6 +244,9 @@ class UnifiedProcessor:
                 return False
             if agency.num_cfr != actual_cfr:
                 logger.error(f"Agency {agency_id} has incorrect CFR count: {agency.num_cfr} != {actual_cfr}")
+                return False
+            if agency.num_cfr_refs != actual_cfr_refs:
+                logger.error(f"Agency {agency_id} has incorrect CFR refs count: {agency.num_cfr_refs} != {actual_cfr_refs}")
                 return False
                 
         # Validate node correction counts
@@ -355,26 +359,27 @@ class UnifiedProcessor:
 
     def _calculate_agency_counts(self) -> None:
         """Calculate num_children and num_cfr for all agencies"""
-        def calculate_counts(agency_id: str) -> Tuple[int, int]:
+        def calculate_counts(agency_id: str) -> Tuple[int, int, int]:
             agency = self.agencies[agency_id]
             
             # Count direct children
             num_children = len(self.agency_by_parent[agency_id])
             
-            # Count CFR references
-            num_cfr = len([ref for ref in self.cfr_references if ref.agency_id == agency_id])
+            # Count direct CFR references (not accumulated from children)
+            direct_cfr = len([ref for ref in self.cfr_references if ref.agency_id == agency_id])
+            direct_cfr_refs = len([m for m in self.agency_node_mappings if m.agency_id == agency_id])
             
-            # Add counts from children
+            # Add children counts from children (but not CFR refs)
             for child in self.agency_by_parent[agency_id]:
-                child_children, child_cfr = calculate_counts(child.id)
+                child_children, _, _ = calculate_counts(child.id)
                 num_children += child_children
-                num_cfr += child_cfr
             
             # Update agency counts
             agency.num_children = num_children
-            agency.num_cfr = num_cfr
+            agency.num_cfr = direct_cfr  # Only direct CFR references
+            agency.num_cfr_refs = direct_cfr_refs  # Only direct CFR refs
             
-            return num_children, num_cfr
+            return num_children, direct_cfr, direct_cfr_refs
         
         # Start with top-level agencies
         for agency_id, agency in self.agencies.items():
@@ -404,7 +409,9 @@ class UnifiedProcessor:
         agency.num_sections = total_sections
         agency.num_words = total_words
         agency.num_corrections = total_corrections
-        agency.num_cfr_refs = len(referenced_nodes)  # Update CFR reference count
+        
+        # Note: num_cfr and num_cfr_refs are now handled in _calculate_agency_counts()
+        # which properly accumulates them up the hierarchy
 
     def process_correction(self, correction_data: Dict) -> None:
         """Process correction data and update related nodes and agencies"""
@@ -421,7 +428,12 @@ class UnifiedProcessor:
         error_occurred = parse_date(correction_data.get('error_occurred', ''))
         correction_duration = (error_corrected - error_occurred).days if error_corrected and error_occurred else None
         
+        # Generate a unique ID using a hash of the node_id and index
+        # This ensures uniqueness while being deterministic
+        unique_id = abs(hash(f"correction:{node_id}:{len(self.corrections)}")) % (2**31)
+        
         correction = Correction(
+            id=unique_id,
             node_id=node_id,
             agency_id=correction_data['agency_id'],
             title=correction_data['title'],
