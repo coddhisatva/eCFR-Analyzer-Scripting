@@ -6,7 +6,7 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import argparse
 
 # Set up basic logging
@@ -86,6 +86,44 @@ def build_node_id(hierarchy: Dict[str, str]) -> str:
     
     return '/'.join(parts)
 
+def find_matching_node_id(client, hierarchy: Dict[str, str]) -> Optional[str]:
+    """
+    Find a matching node ID when exact match fails.
+    Since chapters are unique within a title, we can reliably find the correct node
+    by matching both title and chapter number.
+    
+    Args:
+        client: Supabase client
+        hierarchy: Dictionary containing title, chapter, etc.
+        
+    Returns:
+        Matching node ID if found, None otherwise
+    """
+    try:
+        # Get title and chapter
+        title = hierarchy.get('title')
+        chapter = hierarchy.get('chapter')
+        if not title or not chapter:
+            return None
+            
+        # First try exact match with the full node_id
+        node_id = build_node_id(hierarchy)
+        exact_match = client.table('nodes').select('id').eq('id', node_id).execute()
+        if exact_match.data:
+            return exact_match.data[0]['id']
+            
+        # If no exact match, search for any node with this title and chapter
+        # Since chapters are unique within a title, this will find the correct node
+        result = client.table('nodes').select('id').ilike('id', f"%/title={title}%/chapter={chapter}%").execute()
+        if result.data:
+            # Since chapters are unique within a title, we can take the first match
+            return result.data[0]['id']
+            
+    except Exception as e:
+        logger.warning(f"Error finding matching node: {e}")
+        
+    return None
+
 def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]:
     """
     Process correction data into Correction entities
@@ -97,6 +135,7 @@ def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]
         List of Correction entities (one for each CFR reference)
     """
     corrections = []
+    client = get_supabase_client()
     
     # Extract common correction data
     error_corrected = parse_date(correction_data.get('error_corrected', ''))
@@ -105,9 +144,12 @@ def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]
     
     # Process each CFR reference
     for i, cfr_ref in enumerate(correction_data.get('cfr_references', [])):
-        # Build node_id from hierarchy
+        # Try to find matching node using hierarchy
         hierarchy = cfr_ref.get('hierarchy', {})
-        node_id = build_node_id(hierarchy)
+        node_id = find_matching_node_id(client, hierarchy)
+        if not node_id:
+            logger.warning(f"Could not find matching node for title={hierarchy.get('title')}, chapter={hierarchy.get('chapter')}")
+            continue
         
         # Generate a unique ID using a hash of the node_id and index
         # This ensures uniqueness while being deterministic
