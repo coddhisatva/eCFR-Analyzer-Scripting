@@ -7,3 +7,9 @@ __pycache__/
 application_octet-stream_title-1.xml
 .DS_Store
 data/
+
+#dev docs:
+db_schema_explanation_docs.md
+tree_nav_plan.md
+indexes_for_nodes.md
+strats/

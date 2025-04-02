@@ -26,7 +26,7 @@ class Node:
     number: Optional[str] = None
     node_name: Optional[str] = None
     parent: Optional[str] = None
-    top_level_title: Optional[str] = None
+    top_level_title: Optional[int] = None
     reserved: Optional[str] = None
     depth: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None

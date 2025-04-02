@@ -232,8 +232,9 @@ def split_content_into_chunks(content: str, section_id: str) -> List[ContentChun
     
     return chunks
 
-def process_children(parent_element, parent_components, parent_id, title_num, nodes, chunks, depth):
-    """Process child elements recursively"""
+def process_children(parent_element, parent_components, parent_id, title_num, nodes, chunks, 
+                    depth, display_order_counter):
+    """Process child elements recursively with display order"""
     if not parent_element:
         return
         
@@ -277,6 +278,7 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 'first_chunk_id': content_chunks[0].id if content_chunks else None,
                 'last_chunk_id': content_chunks[-1].id if content_chunks else None
             }
+            display_order_counter += 1
             
             div_node = Node(
                 id=div_id,
@@ -289,7 +291,8 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 parent=parent_id,
                 top_level_title=title_num,
                 metadata=metadata,
-                depth=depth
+                depth=depth,
+                display_order=display_order_counter
             )
             
             # Add chunks to the list
@@ -312,7 +315,7 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         nodes.append(div_node)
         
         # Process children recursively
-        process_children(div, div_components, div_id, title_num, nodes, chunks, depth + 1)
+        process_children(div, div_components, div_id, title_num, nodes, chunks, depth + 1, display_order_counter)
 
 def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk]]:
     """
@@ -358,6 +361,7 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
         title_id = create_hierarchical_id(title_components)
         title_citation = create_citation(title_components)
         title_link = create_link(title_components)
+        display_order_counter = 0
         
         title_node = Node(
             id=title_id,
@@ -368,7 +372,8 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
             number=title_num,
             node_name=title_name,
             top_level_title=title_num,
-            depth=0
+            depth=0,
+            display_order=display_order_counter
         )
         
         # Lists to hold all nodes and chunks
@@ -376,7 +381,7 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
         chunks = []
         
         # Process the hierarchy recursively
-        process_children(title_element, title_components, title_id, title_num, nodes, chunks, depth=1)
+        process_children(title_element, title_components, title_id, title_num, nodes, chunks, depth=1, display_order_counter=display_order_counter)
         
         logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes and {len(chunks)} chunks")
         return nodes, chunks

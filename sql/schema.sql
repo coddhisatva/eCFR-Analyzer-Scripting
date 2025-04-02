@@ -15,7 +15,7 @@ CREATE TABLE nodes (
     number TEXT,                            -- Identifier for this level
     node_name TEXT,                         -- Display name
     parent TEXT,                            -- Parent node ID
-    top_level_title TEXT,                   -- Title number this belongs to
+    top_level_title INTEGER,                   -- Title number this belongs to
     reserved TEXT,                          -- For 'reserved' sections
     metadata JSONB                          -- Additional metadata (word counts, etc.)
 );
