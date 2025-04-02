@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS corrections;
+
 CREATE TABLE corrections (
     id SERIAL PRIMARY KEY,
     node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
