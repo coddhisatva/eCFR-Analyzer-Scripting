@@ -281,10 +281,7 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 'last_chunk_id': content_chunks[-1].id if content_chunks else None
             }
             
-            # Generate tsvector for each chunk
-            for chunk in content_chunks:
-                chunk.content_tsvector = f"to_tsvector('english', {chunk.content})"
-            
+            # Don't set tsvector here - let the database handle it
             div_node = Node(
                 id=div_id,
                 citation=div_citation,
