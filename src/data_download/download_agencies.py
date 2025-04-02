@@ -58,7 +58,7 @@ def download_all_agencies(date: str):
         logger.info(f"Saved agency data to {file_path}")
         
         # Also save individual agency files for easier processing
-        for agency in data:
+        for agency in data.get('agencies', []):
             agency_id = agency.get('id')
             if agency_id:
                 agency_file = os.path.join(date_dir, f"agency-{agency_id}.json")

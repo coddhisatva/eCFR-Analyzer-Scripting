@@ -15,7 +15,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Directory for raw data
-RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
+RAW_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
+CORRECTIONS_DIR = os.path.join(RAW_DIR, "corrections")
 
 # API Base URL
 API_BASE_URL = "https://www.ecfr.gov/api/admin/v1"
@@ -61,7 +62,7 @@ def download_all_corrections(date: str):
         date: The date to download data for (YYYY-MM-DD)
     """
     # Create directory for the date
-    date_dir = os.path.join(RAW_DATA_DIR, date)
+    date_dir = os.path.join(CORRECTIONS_DIR, date)
     ensure_directory_exists(date_dir)
     
     # List of titles to download (1-50 excluding skipped titles)
@@ -99,14 +100,15 @@ if __name__ == "__main__":
     if not args.verbose:
         logger.setLevel(logging.INFO)
     
-    ensure_directory_exists(RAW_DATA_DIR)
+    ensure_directory_exists(RAW_DIR)
+    ensure_directory_exists(CORRECTIONS_DIR)
     
     if args.title:
         # Download single title
         logger.info(f"Downloading corrections for title {args.title}")
         data = download_corrections_for_title(args.title)
         if data:
-            file_path = os.path.join(RAW_DATA_DIR, args.date, f"corrections-title-{args.title}.json")
+            file_path = os.path.join(CORRECTIONS_DIR, args.date, f"corrections-title-{args.title}.json")
             ensure_directory_exists(os.path.dirname(file_path))
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
