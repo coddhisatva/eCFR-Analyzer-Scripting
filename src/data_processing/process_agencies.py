@@ -162,6 +162,7 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
         List of CFRReference entities
     """
     references = []
+    client = get_supabase_client()
     
     for i, ref_data in enumerate(references_data):
         # Get title number
@@ -177,7 +178,11 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
         # Get subchapter if present
         subchapter = ref_data.get('subchapter')
             
-        node_id = build_node_id(title, subheading, subchapter)
+        # Try to find the correct node_id
+        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
+        if not node_id:
+            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
+            continue
         
         # Generate a unique ID using a hash of the agency_id and node_id
         # This ensures uniqueness while being deterministic
@@ -208,6 +213,7 @@ def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str,
     """
     mappings = []
     seen_nodes = set()
+    client = get_supabase_client()
     
     for i, ref_data in enumerate(references_data):
         # Get title number
@@ -220,10 +226,11 @@ def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str,
         if not subheading:
             continue
             
-        # Get subchapter if present
-        subchapter = ref_data.get('subchapter')
-            
-        node_id = build_node_id(title, subheading, subchapter)
+        # Try to find the correct node_id
+        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
+        if not node_id:
+            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
+            continue
         
         # Skip if we've already seen this node
         if node_id in seen_nodes:
