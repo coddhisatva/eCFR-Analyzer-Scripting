@@ -1,122 +1,104 @@
 #!/usr/bin/env python3
 """
-Script to compute and update section counts for nodes and agencies.
-For nodes: Counts sections at each level and propagates up the tree.
-For agencies: Counts sections for all related nodes.
+Script to compute and update section counts for all nodes in the hierarchy.
+Works bottom-up, starting from sections and computing parent section counts
+as the sum of their children's section counts.
 """
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.database.connector import get_supabase_client
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_parent_id(node_id: str) -> str:
-    """Get the parent ID of a node by removing the last path component"""
-    parts = node_id.split('/')
-    if len(parts) <= 1:
-        return None
-    return '/'.join(parts[:-1])
+# Batch size for updates
+BATCH_SIZE = 1000
 
-def get_children(parent_id: str):
-    """Get all immediate children of a node"""
+def get_section_nodes():
+    """Get all section nodes (nodes with level_type = 'section')"""
     client = get_supabase_client()
     
-    # Use LIKE to match immediate children (one level down)
-    result = client.table('nodes').select('id').ilike('id', f"{parent_id}/%").execute()
-    return [node for node in result.data if get_parent_id(node['id']) == parent_id]
+    # Get nodes that are sections
+    result = client.table('nodes').select('id', 'num_sections').eq('level_type', 'section').execute()
+    return result.data
 
-def is_section(node_id: str) -> bool:
-    """Check if a node is a section by looking for 'section=' in its ID"""
-    return 'section=' in node_id
+def get_children(node_id: str) -> List[Dict[str, Any]]:
+    """Get all children of a node"""
+    client = get_supabase_client()
+    
+    result = client.table('nodes').select('id', 'num_sections').eq('parent', node_id).execute()
+    return result.data
+
+def get_parent_id(node_id: str) -> Optional[str]:
+    """Get the parent ID of a node"""
+    client = get_supabase_client()
+    
+    result = client.table('nodes').select('parent').eq('id', node_id).execute()
+    return result.data[0]['parent'] if result.data else None
 
 def compute_node_section_count(node_id: str) -> int:
     """
-    Compute section count for a node by counting sections in its subtree.
-    A node is a section if it has 'section=' in its ID.
+    Compute section count for a node by summing its children's section counts.
+    Returns 0 if no children have section counts.
     """
-    # Count this node if it's a section
-    total_sections = 1 if is_section(node_id) else 0
-    
-    # Add sections from children
     children = get_children(node_id)
+    total_sections = 0
+    
     for child in children:
-        child_count = compute_node_section_count(child['id'])
-        total_sections += child_count
+        total_sections += child.get('num_sections', 0)
     
     return total_sections
 
-def update_node_section_count(node_id: str, count: int):
-    """Update a node's section count in its metadata"""
-    client = get_supabase_client()
+def process_level(node_ids: List[str]):
+    """Process a level of nodes, computing and updating their section counts"""
+    # Group nodes by parent
+    parent_groups: Dict[str, List[str]] = {}
+    for node_id in node_ids:
+        parent_id = get_parent_id(node_id)
+        if parent_id:
+            parent_groups.setdefault(parent_id, []).append(node_id)
     
-    # Get current metadata
-    result = client.table('nodes').select('metadata').eq('id', node_id).execute()
-    if not result.data:
-        logger.warning(f"Node {node_id} not found")
-        return
+    # Process each parent
+    updates = []
+    for parent_id in parent_groups:
+        section_count = compute_node_section_count(parent_id)
+        if section_count > 0:
+            updates.append({
+                'id': parent_id,
+                'num_sections': section_count
+            })
         
-    metadata = result.data[0].get('metadata', {})
-    metadata['section_count'] = count
+        # Process batch if we have enough updates
+        if len(updates) >= BATCH_SIZE:
+            client = get_supabase_client()
+            client.table('nodes').upsert(updates).execute()
+            logger.info(f"Updated {len(updates)} nodes")
+            updates = []
     
-    # Update metadata
-    client.table('nodes').update({'metadata': metadata}).eq('id', node_id).execute()
-    logger.info(f"Updated section count for {node_id}: {count}")
-
-def compute_agency_section_counts():
-    """Compute and update section counts for agencies based on their CFR relationships"""
-    client = get_supabase_client()
+    # Process remaining updates
+    if updates:
+        client = get_supabase_client()
+        client.table('nodes').upsert(updates).execute()
+        logger.info(f"Updated {len(updates)} nodes")
     
-    # Get all agency-node mappings
-    result = client.table('agency_node_mappings').select('agency_id', 'node_id').execute()
-    mappings = result.data
-    
-    # Group by agency
-    agency_nodes: Dict[str, List[str]] = {}
-    for mapping in mappings:
-        agency_id = mapping['agency_id']
-        node_id = mapping['node_id']
-        agency_nodes.setdefault(agency_id, []).append(node_id)
-    
-    # Compute and update section counts for each agency
-    for agency_id, node_ids in agency_nodes.items():
-        total_sections = 0
-        
-        # For each node, get its section count from metadata
-        nodes_result = client.table('nodes').select('metadata').in_('id', node_ids).execute()
-        for node in nodes_result.data:
-            section_count = node.get('metadata', {}).get('section_count', 0)
-            if isinstance(section_count, str):
-                section_count = int(section_count)
-            total_sections += section_count
-        
-        # Update agency
-        client.table('agencies').update({'num_sections': total_sections}).eq('id', agency_id).execute()
-        logger.info(f"Updated section count for agency {agency_id}: {total_sections}")
-
-def process_all_nodes():
-    """Process all nodes to compute their section counts"""
-    client = get_supabase_client()
-    
-    # Get all root nodes (us/federal/ecfr/title=X)
-    result = client.table('nodes').select('id').like('id', 'us/federal/ecfr/title=%').execute()
-    root_nodes = result.data
-    
-    # Process each root node and its subtree
-    for node in root_nodes:
-        node_id = node['id']
-        logger.info(f"Processing root node {node_id}")
-        count = compute_node_section_count(node_id)
-        update_node_section_count(node_id, count)
+    return list(parent_groups.keys())
 
 def main():
     """Main function to compute all section counts"""
-    # Process all nodes
-    process_all_nodes()
+    # Start with section nodes
+    section_nodes = get_section_nodes()
+    current_level = [node['id'] for node in section_nodes]
+    logger.info(f"Starting with {len(current_level)} section nodes")
     
-    # Update agency section counts
-    compute_agency_section_counts()
+    # Process each level up the tree until no more parents
+    level = 1
+    while current_level:
+        logger.info(f"Processing level {level}: {len(current_level)} nodes")
+        current_level = process_level(current_level)
+        level += 1
+    
+    logger.info("Finished computing section counts")
 
 if __name__ == "__main__":
     main() 
