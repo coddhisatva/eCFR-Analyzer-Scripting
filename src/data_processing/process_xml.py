@@ -292,7 +292,8 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 top_level_title=title_num,
                 metadata=metadata,
                 depth=depth,
-                display_order=display_order_counter
+                display_order=display_order_counter,
+                num_corrections=0
             )
             
             # Add chunks to the list
@@ -309,7 +310,10 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 node_name=div_name,
                 parent=parent_id,
                 top_level_title=title_num,
-                depth=depth
+                depth=depth,
+                display_order=display_order_counter,
+                num_corrections=0
+                
             )
         
         nodes.append(div_node)
@@ -373,7 +377,8 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
             node_name=title_name,
             top_level_title=title_num,
             depth=0,
-            display_order=display_order_counter
+            display_order=display_order_counter,
+            num_corrections=0
         )
         
         # Lists to hold all nodes and chunks

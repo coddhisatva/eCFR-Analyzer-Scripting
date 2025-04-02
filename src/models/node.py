@@ -31,3 +31,4 @@ class Node:
     reserved: Optional[str] = None
     depth: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
+    num_corrections: Optional[int] = None
