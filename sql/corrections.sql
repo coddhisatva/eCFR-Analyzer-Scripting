@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS corrections;
 CREATE TABLE corrections (
     id SERIAL PRIMARY KEY,
     node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+    agency_id TEXT REFERENCES agencies(id) ON DELETE CASCADE,
     title INTEGER NOT NULL,
     corrective_action TEXT,
     error_corrected DATE,
@@ -18,7 +19,7 @@ CREATE TABLE corrections (
 CREATE INDEX corrections_node_idx ON corrections(node_id);
 
 -- Index for finding corrections by agency
-CREATE INDEX corrections_agency_id_idx ON corrections(agency_id);
+CREATE INDEX corrections_agency_idx ON corrections(agency_id);
 
 -- Index for finding corrections by date ranges
 CREATE INDEX corrections_corrected_idx ON corrections(error_corrected);
