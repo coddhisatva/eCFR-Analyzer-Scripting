@@ -15,7 +15,8 @@ CREATE TABLE agencies (
 	num_children INTEGER DEFAULT 0,
 	num_words INTEGER DEFAULT 0,
 	num_sections INTEGER DEFAULT 0,
-	num_corrections INTEGER DEFAULT 0
+	num_corrections INTEGER DEFAULT 0,
+	num_cfr_refs INTEGER DEFAULT 0  -- Number of CFR references for this relationship
 );
 
 -- Indexes for agency hierarchy navigation --
@@ -31,7 +32,6 @@ CREATE TABLE cfr_references (
     agency_id TEXT NOT NULL REFERENCES agencies(id) ON DELETE SET NULL,
     title INTEGER NOT NULL,
     subheading TEXT,
-    is_primary BOOLEAN DEFAULT true,
     ordinal INTEGER,
     node_id TEXT REFERENCES nodes(id),  -- Direct link to the nodes table
     UNIQUE(agency_id, node_id)
@@ -46,9 +46,6 @@ CREATE TABLE agency_node_mappings (
     id SERIAL PRIMARY KEY,
     agency_id TEXT NOT NULL REFERENCES agencies(id),
     node_id TEXT NOT NULL REFERENCES nodes(id),
-    is_primary BOOLEAN DEFAULT false,  -- Is this the primary agency for this node
-    is_direct_reference BOOLEAN DEFAULT false,  -- Is this a direct CFR reference vs. inherited
-    relationship_type TEXT,  -- Type of relationship (regulatory, advisory, etc.)
     metadata JSONB,  -- Additional information about the relationship
     UNIQUE(agency_id, node_id)  -- Prevent duplicate mappings
 );

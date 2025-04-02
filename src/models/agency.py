@@ -24,6 +24,7 @@ class Agency:
         num_words: Total word count across regulated content
         num_sections: Number of regulated sections
         num_corrections: Number of corrections in regulated content
+        num_cfr_refs: Number of CFR references for this agency
     """
     id: str
     name: str
@@ -37,4 +38,5 @@ class Agency:
     num_children: int = 0
     num_words: int = 0
     num_sections: int = 0
-    num_corrections: int = 0 
+    num_corrections: int = 0
+    num_cfr_refs: int = 0 

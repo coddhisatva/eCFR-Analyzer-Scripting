@@ -18,6 +18,7 @@ class AgencyNodeMapping:
         is_direct_reference: Whether this is a direct CFR reference vs. inherited
         relationship_type: Type of relationship (regulatory, advisory, etc.)
         metadata: Additional information about the relationship
+        num_cfr_refs: Number of CFR references for this relationship
     """
     id: int
     agency_id: str
@@ -25,4 +26,5 @@ class AgencyNodeMapping:
     is_primary: bool = False
     is_direct_reference: bool = False
     relationship_type: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None 
+    metadata: Optional[Dict[str, Any]] = None
+    num_cfr_refs: int = 0 

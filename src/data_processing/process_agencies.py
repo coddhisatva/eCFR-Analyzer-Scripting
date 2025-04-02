@@ -34,6 +34,38 @@ def clean_text(text: str) -> str:
         return ""
     return text.strip()
 
+def build_node_id(title: int, subheading: str) -> str:
+    """
+    Build a node ID from title and subheading.
+    Handles different subheading types and formats.
+    """
+    # Convert subheading type to node format
+    subheading = subheading.lower()
+    if subheading.startswith('subchapter'):
+        subheading = 'subchap' + subheading[9:]  # Remove 'subchapter' and keep the rest
+    
+    # Handle word-number format
+    parts = subheading.split('-')
+    if len(parts) > 1:
+        # If it's already in word-number format, use as is
+        formatted_subheading = subheading
+    else:
+        # If it's just a number/letter, format as "type-number"
+        formatted_subheading = f"{subheading}-{parts[0]}"
+    
+    return f"title-{title}/{formatted_subheading}"
+
+def determine_agency_type(agency_data: Dict[str, Any], is_root: bool) -> str:
+    """
+    Determine agency type based on hierarchy and children.
+    """
+    if is_root:
+        return 'root'
+    elif agency_data.get('children'):
+        return 'middle'
+    else:
+        return 'zed'
+
 def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = None, depth: int = 0) -> List[Agency]:
     """
     Process agency data recursively to create Agency entities
@@ -49,10 +81,13 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     agencies = []
     
     # Extract basic agency information
-    agency_id = agency_data.get('id')
+    agency_id = agency_data.get('slug')  # Changed from 'id' to 'slug'
     if not agency_id:
-        logger.warning("Skipping agency without ID")
+        logger.warning("Skipping agency without slug")
         return []
+    
+    # Determine if this is a root agency
+    is_root = parent_id is None
     
     # Create agency entity
     agency = Agency(
@@ -63,7 +98,7 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         sortable_name=clean_text(agency_data.get('sortable_name', '')),
         parent_id=parent_id,
         depth=depth,
-        agency_type=agency_data.get('agency_type', 'middle'),
+        agency_type=determine_agency_type(agency_data, is_root),
         metadata={
             'description': clean_text(agency_data.get('description', '')),
             'website': clean_text(agency_data.get('website', '')),
@@ -73,12 +108,13 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         num_children=len(agency_data.get('children', [])),
         num_words=0,  # Will be calculated later
         num_sections=0,  # Will be calculated later
-        num_corrections=0  # Will be calculated later
+        num_corrections=0,  # Will be calculated later
+        num_cfr_refs=len(agency_data.get('cfr_references', []))  # Count CFR references
     )
     
     agencies.append(agency)
     
-    # Process children recursively
+    # Process children recursively with incremented depth
     for child in agency_data.get('children', []):
         child_agencies = process_agency_data(child, agency_id, depth + 1)
         agencies.extend(child_agencies)
@@ -99,40 +135,59 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
     references = []
     
     for i, ref_data in enumerate(references_data):
+        title = ref_data.get('title')
+        if not title:
+            continue
+            
+        # Build node_id from title and subheading
+        subheading = ref_data.get('chapter') or ref_data.get('subchapter') or ref_data.get('subtitle') or ref_data.get('part')
+        if not subheading:
+            continue
+            
+        node_id = build_node_id(title, subheading)
+        
         reference = CFRReference(
             agency_id=agency_id,
-            title=ref_data.get('title', ''),
-            subheading=clean_text(ref_data.get('subheading', '')),
-            is_primary=ref_data.get('is_primary', False),
+            title=title,
+            subheading=clean_text(subheading),
             ordinal=i,
-            node_id=ref_data.get('node_id')
+            node_id=node_id
         )
         references.append(reference)
     
     return references
 
-def process_agency_node_mappings(agency_id: str, mappings_data: List[Dict[str, Any]]) -> List[AgencyNodeMapping]:
+def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str, Any]]) -> List[AgencyNodeMapping]:
     """
-    Process agency-node mappings
+    Process agency-node mappings from CFR references
     
     Args:
         agency_id: ID of the agency
-        mappings_data: List of mapping data dictionaries
+        references_data: List of reference data dictionaries
         
     Returns:
         List of AgencyNodeMapping entities
     """
     mappings = []
     
-    for mapping_data in mappings_data:
+    for ref_data in references_data:
+        title = ref_data.get('title')
+        if not title:
+            continue
+            
+        # Build node_id from title and subheading
+        subheading = ref_data.get('chapter') or ref_data.get('subchapter') or ref_data.get('subtitle') or ref_data.get('part')
+        if not subheading:
+            continue
+            
+        node_id = build_node_id(title, subheading)
+        
         mapping = AgencyNodeMapping(
             agency_id=agency_id,
-            node_id=mapping_data.get('node_id'),
-            is_primary=mapping_data.get('is_primary', False),
-            is_direct_reference=mapping_data.get('is_direct_reference', True),
-            relationship_type=mapping_data.get('relationship_type', 'regulates'),
+            node_id=node_id,
             metadata={
-                'notes': clean_text(mapping_data.get('notes', '')),
+                'title': title,
+                'subheading': clean_text(subheading),
                 'last_updated': datetime.now().isoformat()
             }
         )
@@ -159,17 +214,19 @@ def process_agency_file(file_path: str):
             insert_agencies(agencies)
             logger.info(f"Inserted {len(agencies)} agencies")
         
-        # Process CFR references
-        references = process_cfr_references(data['id'], data.get('cfr_references', []))
-        if references:
-            insert_cfr_references(references)
-            logger.info(f"Inserted {len(references)} CFR references")
-        
-        # Process agency-node mappings
-        mappings = process_agency_node_mappings(data['id'], data.get('node_mappings', []))
-        if mappings:
-            insert_agency_node_mappings(mappings)
-            logger.info(f"Inserted {len(mappings)} agency-node mappings")
+        # Get CFR references for each agency
+        for agency in agencies:
+            # Process CFR references
+            references = process_cfr_references(agency.id, data.get('cfr_references', []))
+            if references:
+                insert_cfr_references(references)
+                logger.info(f"Inserted {len(references)} CFR references for agency {agency.id}")
+            
+            # Process agency-node mappings from the same references
+            mappings = process_agency_node_mappings(agency.id, data.get('cfr_references', []))
+            if mappings:
+                insert_agency_node_mappings(mappings)
+                logger.info(f"Inserted {len(mappings)} agency-node mappings for agency {agency.id}")
         
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}")
