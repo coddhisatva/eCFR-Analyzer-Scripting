@@ -8,7 +8,14 @@ from typing import Optional
 @dataclass
 class ContentChunk:
     """
-    Represents a chunk of content from a section
+    Represents a chunk of content from a CFR section
+    
+    Attributes:
+        id: Unique identifier for the chunk
+        section_id: Reference to the parent section
+        chunk_number: Order of the chunk within the section
+        content: The actual content text
+        content_tsvector: Full-text search vector for the content
     """
     id: str  # Unique ID for the chunk
     section_id: str  # Reference to parent node

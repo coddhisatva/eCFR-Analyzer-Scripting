@@ -276,11 +276,14 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
             
             # Create metadata with chunk information
             metadata = {
-                'word_count': total_words,
                 'total_chunks': len(content_chunks),
                 'first_chunk_id': content_chunks[0].id if content_chunks else None,
                 'last_chunk_id': content_chunks[-1].id if content_chunks else None
             }
+            
+            # Generate tsvector for each chunk
+            for chunk in content_chunks:
+                chunk.content_tsvector = f"to_tsvector('english', {chunk.content})"
             
             div_node = Node(
                 id=div_id,
@@ -295,7 +298,9 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 metadata=metadata,
                 depth=depth,
                 display_order=display_order_counter,
-                num_corrections=0
+                num_corrections=0,
+                num_sections=1,  # Sections have 1 section
+                num_words=total_words  # Word count from content
             )
             
             # Add chunks to the list
@@ -314,8 +319,9 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 top_level_title=title_num,
                 depth=depth,
                 display_order=display_order_counter,
-                num_corrections=0
-                
+                num_corrections=0,
+                num_sections=0,  # Non-sections start with 0 sections
+                num_words=0  # Non-sections start with 0 words
             )
         
         nodes.append(div_node)
