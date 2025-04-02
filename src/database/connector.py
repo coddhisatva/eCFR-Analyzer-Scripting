@@ -271,6 +271,24 @@ def insert_agency_node_mappings(mappings: List[AgencyNodeMapping]) -> None:
                 print(f"Agency: {mapping['agency_id']}, Node: {mapping['node_id']}")
             raise
 
+def node_exists(node_id: str) -> bool:
+    """
+    Check if a node exists in the database
+    
+    Args:
+        node_id: The ID of the node to check
+        
+    Returns:
+        True if the node exists, False otherwise
+    """
+    client = get_supabase_client()
+    try:
+        result = client.table('nodes').select('id').eq('id', node_id).execute()
+        return len(result.data) > 0
+    except Exception as e:
+        print(f"Error checking if node exists: {e}")
+        return False
+
 def insert_corrections(corrections: List[Correction]):
     """
     Insert corrections into the database
@@ -283,9 +301,17 @@ def insert_corrections(corrections: List[Correction]):
     """
     client = get_supabase_client()
     
-    # Convert corrections to dictionaries for insertion
+    # Convert corrections to dictionaries for insertion, skipping missing nodes
     correction_dicts = []
+    skipped_count = 0
+    
     for correction in corrections:
+        # Check if the node exists
+        if not node_exists(correction.node_id):
+            print(f"Skipping correction for missing node: {correction.node_id}")
+            skipped_count += 1
+            continue
+            
         correction_dict = {
             'node_id': correction.node_id,
             'title': correction.title,
@@ -299,6 +325,13 @@ def insert_corrections(corrections: List[Correction]):
             'metadata': correction.metadata
         }
         correction_dicts.append(correction_dict)
+    
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} corrections due to missing nodes")
+    
+    if not correction_dicts:
+        print("No valid corrections to insert")
+        return
     
     # Insert corrections in batches
     batch_size = 100

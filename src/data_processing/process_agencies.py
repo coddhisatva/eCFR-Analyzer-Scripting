@@ -54,7 +54,7 @@ def roman_to_arabic(roman: str) -> int:
     
     return result
 
-def build_node_id(title: int, subheading: str) -> str:
+def build_node_id(title: int, subheading: str, subchapter: str = None) -> str:
     """
     Build a node ID from title and subheading.
     Handles different subheading types and formats.
@@ -72,6 +72,10 @@ def build_node_id(title: int, subheading: str) -> str:
     
     # Create components list like XML processing
     components = [("title", str(title)), ("chapter", number)]
+    
+    # Add subchapter if present
+    if subchapter:
+        components.append(("subchap", subchapter))
     
     # Build hierarchical ID
     parts = ["us", "federal", "ecfr"]
@@ -170,7 +174,10 @@ def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]
         if not subheading:
             continue
             
-        node_id = build_node_id(title, subheading)
+        # Get subchapter if present
+        subchapter = ref_data.get('subchapter')
+            
+        node_id = build_node_id(title, subheading, subchapter)
         
         # Generate a unique ID using a hash of the agency_id and node_id
         # This ensures uniqueness while being deterministic
@@ -213,7 +220,10 @@ def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str,
         if not subheading:
             continue
             
-        node_id = build_node_id(title, subheading)
+        # Get subchapter if present
+        subchapter = ref_data.get('subchapter')
+            
+        node_id = build_node_id(title, subheading, subchapter)
         
         # Skip if we've already seen this node
         if node_id in seen_nodes:
