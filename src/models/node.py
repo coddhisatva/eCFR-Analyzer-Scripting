@@ -22,11 +22,11 @@ class Node:
     citation: str  # Formatted citation (e.g., "1 CFR Part 1")
     link: Optional[str] = None  # URL to the original content
     node_type: str = "structure"  # 'structure', 'content', or 'hub'
-    level_type: str = None  # 'title', 'chapter', 'part', 'section', etc.
-    number: str = None  # Identifier for this level
-    node_name: str = None  # Display name
-    parent: Optional[str] = None  # Parent node ID
-    top_level_title: Optional[str] = None  # Title number this belongs to
-    reserved: Optional[str] = None  # For 'reserved' sections
-    depth: Optional[int] = None  # Depth in the hierarchy
-    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
+    level_type: Optional[str] = None
+    number: Optional[str] = None
+    node_name: Optional[str] = None
+    parent: Optional[str] = None
+    top_level_title: Optional[str] = None
+    reserved: Optional[str] = None
+    depth: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
