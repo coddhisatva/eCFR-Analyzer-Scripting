@@ -11,6 +11,10 @@ from src.database.connector import get_supabase_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Batch size for updates
+BATCH_SIZE = 1000
+node_updates = []
+
 def get_parent_id(node_id: str) -> str:
     """Get the parent ID of a node by removing the last path component"""
     parts = node_id.split('/')
@@ -30,11 +34,26 @@ def is_section(node_id: str) -> bool:
     """Check if a node is a section by looking for 'section=' in its ID"""
     return 'section=' in node_id
 
+def batch_update_nodes():
+    """Update nodes in batches"""
+    global node_updates
+    if not node_updates:
+        return
+        
+    client = get_supabase_client()
+    batch = node_updates[:BATCH_SIZE]
+    node_updates = node_updates[BATCH_SIZE:]
+    
+    for update in batch:
+        client.table('nodes').update({'metadata': update['metadata']}).eq('id', update['id']).execute()
+        logger.info(f"Updated counts for {update['id']}: {update['metadata']['word_count']} words, {update['metadata']['section_count']} sections")
+
 def compute_node_counts(node_id: str) -> Tuple[int, int]:
     """
     Compute both word count and section count for a node.
     Returns (word_count, section_count).
     """
+    global node_updates
     client = get_supabase_client()
     
     # Get current metadata
@@ -62,9 +81,12 @@ def compute_node_counts(node_id: str) -> Tuple[int, int]:
     metadata['word_count'] = word_count
     metadata['section_count'] = section_count
     
-    # Update node
-    client.table('nodes').update({'metadata': metadata}).eq('id', node_id).execute()
-    logger.info(f"Updated counts for {node_id}: {word_count} words, {section_count} sections")
+    # Queue update
+    node_updates.append({'id': node_id, 'metadata': metadata})
+    
+    # If we have enough updates, process them
+    if len(node_updates) >= BATCH_SIZE:
+        batch_update_nodes()
     
     return word_count, section_count
 
@@ -89,12 +111,14 @@ def update_agency_counts():
         total_words = 0
         total_sections = 0
         
-        for node_id in node_ids:
-            result = client.table('nodes').select('metadata').eq('id', node_id).execute()
-            if result.data:
-                metadata = result.data[0].get('metadata', {})
-                total_words += metadata.get('word_count', 0)
-                total_sections += metadata.get('section_count', 0)
+        # Get metadata for all nodes in one query
+        node_ids_str = "','".join(node_ids)
+        result = client.table('nodes').select('metadata').in_('id', node_ids).execute()
+        
+        for node_data in result.data:
+            metadata = node_data.get('metadata', {})
+            total_words += metadata.get('word_count', 0)
+            total_sections += metadata.get('section_count', 0)
         
         # Update agency
         client.table('agencies').update({
@@ -105,6 +129,7 @@ def update_agency_counts():
 
 def process_all_nodes():
     """Process all nodes to compute their counts"""
+    global node_updates
     client = get_supabase_client()
     
     # Get all root nodes (us/federal/ecfr/title=X)
@@ -116,6 +141,10 @@ def process_all_nodes():
         node_id = node['id']
         logger.info(f"Processing root node {node_id}")
         compute_node_counts(node_id)
+    
+    # Process any remaining updates
+    while node_updates:
+        batch_update_nodes()
 
 def main():
     """Main function to compute all counts"""
