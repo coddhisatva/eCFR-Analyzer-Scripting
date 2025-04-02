@@ -27,5 +27,9 @@ CREATE INDEX corrections_title_idx ON corrections(title);
 --longest correction duration
 CREATE INDEX corrections_duration_idx ON corrections(correction_duration);
 
+CREATE INDEX corrections_agency_id_idx ON corrections(agency_id);
 
 
+CREATE INDEX nodes_num_corrections_idx ON nodes(num_corrections);
+
+CREATE INDEX nodes_corrections_name_idx ON nodes(num_corrections, node_name);

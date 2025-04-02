@@ -63,6 +63,8 @@ CREATE INDEX nodes_metadata_word_count_idx ON nodes USING btree ((metadata->>'wo
 CREATE INDEX IF NOT EXISTS content_chunks_tsvector_idx ON content_chunks USING gin(content_tsvector);
 -- Section ID index: For finding all chunks of a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(section_id);
+
+CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(node_id);
 -- Combined index for finding specific chunks within a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_chunk_idx ON content_chunks(section_id, chunk_number);
 
@@ -76,11 +78,9 @@ CREATE INDEX content_chunks_content_gin_idx ON content_chunks USING gin (content
 CREATE INDEX content_chunks_content_tsvector_idx ON content_chunks USING gin (to_tsvector('english', content));
 
 
-
- CREATE INDEX nodes_number_idx ON nodes(number);
-
 -- Index for citation searches
 CREATE INDEX nodes_citation_idx ON nodes(citation);
 
 -- Index for node name searches
 CREATE INDEX nodes_name_idx ON nodes(node_name);
+

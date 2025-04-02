@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Tuple
 from collections import defaultdict
 import time
 
+this is an intentional error, DO NOT RUN THIS FILE
 # Add src directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
