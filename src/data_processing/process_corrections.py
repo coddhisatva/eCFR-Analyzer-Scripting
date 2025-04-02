@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Import models
 from src.models.correction import Correction
-from src.database.connector import insert_corrections
+from src.database.connector import insert_corrections, get_supabase_client
 
 # Directory for raw and processed data
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "corrections")
