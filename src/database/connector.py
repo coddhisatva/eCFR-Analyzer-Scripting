@@ -78,7 +78,7 @@ def insert_nodes(nodes: List[Node]):
         unique_nodes.append(node_dict)
     
     # Insert nodes in batches to avoid request size limits
-    batch_size = 100
+    batch_size = 1000
     for i in range(0, len(unique_nodes), batch_size):
         batch = unique_nodes[i:i + batch_size]
         try:
@@ -126,7 +126,7 @@ def insert_content_chunks(chunks: List[ContentChunk]):
         unique_chunks.append(chunk_dict)
     
     # Insert chunks in batches to avoid request size limits
-    batch_size = 100
+    batch_size = 1000
     for i in range(0, len(unique_chunks), batch_size):
         batch = unique_chunks[i:i + batch_size]
         try:
@@ -182,7 +182,7 @@ def insert_agencies(agencies: List[Agency]):
         unique_agencies.append(agency_dict)
     
     # Insert agencies in batches
-    batch_size = 100
+    batch_size = 1000
     for i in range(0, len(unique_agencies), batch_size):
         batch = unique_agencies[i:i + batch_size]
         try:
@@ -233,7 +233,7 @@ def insert_cfr_references(references: List[CFRReference]):
         unique_refs.append(ref_dict)
     
     # Insert references in batches
-    batch_size = 100
+    batch_size = 1000
     for i in range(0, len(unique_refs), batch_size):
         batch = unique_refs[i:i + batch_size]
         try:
@@ -261,8 +261,8 @@ def insert_agency_node_mappings(mappings: List[AgencyNodeMapping]) -> None:
         for mapping in mappings
     ]
     
-    # Process in batches of 100
-    batch_size = 100
+    # Process in batches of 1000
+    batch_size = 1000
     for i in range(0, len(mapping_data), batch_size):
         batch = mapping_data[i:i + batch_size]
         try:
@@ -338,7 +338,7 @@ def insert_corrections(corrections: List[Correction]):
         return
     
     # Insert corrections in batches
-    batch_size = 100
+    batch_size = 1000
     for i in range(0, len(correction_dicts), batch_size):
         batch = correction_dicts[i:i + batch_size]
         try:
