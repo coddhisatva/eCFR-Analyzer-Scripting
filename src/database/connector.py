@@ -68,7 +68,8 @@ def insert_nodes(nodes: List[Node]):
             'reserved': node.reserved,
             'depth': node.depth,
             'metadata': node.metadata,
-            'num_corrections': node.num_corrections
+            'num_corrections': node.num_corrections,
+            'display_order': node.display_order
         }
         unique_nodes.append(node_dict)
     
