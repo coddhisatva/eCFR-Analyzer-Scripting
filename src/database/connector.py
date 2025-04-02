@@ -62,6 +62,7 @@ def insert_nodes(nodes: List[Node]):
             'parent': node.parent,
             'top_level_title': node.top_level_title,
             'reserved': node.reserved,
+            'depth': node.depth,  # <-- Added depth here
             'metadata': node.metadata
         }
         unique_nodes.append(node_dict)
