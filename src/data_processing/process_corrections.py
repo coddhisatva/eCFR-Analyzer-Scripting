@@ -33,8 +33,10 @@ def clean_text(text: Any) -> str:
     # Convert to string if not already
     return str(text).strip()
 
-def parse_date(date_str: str) -> datetime:
+def parse_date(date_str: str) -> Optional[datetime]:
     """Parse date string into datetime object."""
+    if not date_str:  # Handle empty strings and None
+        return None
     try:
         return datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
@@ -42,7 +44,7 @@ def parse_date(date_str: str) -> datetime:
             return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
         except ValueError:
             logger.warning(f"Could not parse date: {date_str}")
-            return datetime.now()
+            return None
 
 def build_node_id(hierarchy: Dict[str, str]) -> str:
     """
