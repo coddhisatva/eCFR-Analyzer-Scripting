@@ -34,6 +34,20 @@ CREATE TABLE content_chunks (
     content_tsvector tsvector               -- Full-text search vector
 );
 
+-- Create trigger to automatically update tsvector
+CREATE OR REPLACE FUNCTION update_content_tsvector()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.content_tsvector = to_tsvector('english', NEW.content);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_content_tsvector_trigger
+    BEFORE INSERT OR UPDATE ON content_chunks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_content_tsvector();
+
 -- Nodes
 
 -- NAV TREE
@@ -44,8 +58,6 @@ WHERE depth = 0;
 SELECT * FROM nodes 
 WHERE depth = 0 
 ORDER BY top_level_title;
---top level, depth, just in case:
-CREATE INDEX nodes_title_depth_idx ON nodes(top_level_title, depth);
 
 -- This is how we do tree navigation on the homepage! Parent based index
 CREATE INDEX nodes_parent_idx ON nodes(parent, display_order);
@@ -66,8 +78,6 @@ CREATE INDEX IF NOT EXISTS content_chunks_tsvector_idx ON content_chunks USING g
 CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(section_id);
 -- Combined index for finding specific chunks within a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_chunk_idx ON content_chunks(section_id, chunk_number);
--- Index for finding chunks by node
-CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(node_id);
 
 -- Index for citation searches
 CREATE INDEX nodes_citation_idx ON nodes(citation);

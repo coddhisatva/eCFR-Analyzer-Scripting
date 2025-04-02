@@ -73,7 +73,9 @@ def insert_nodes(nodes: List[Node]):
             'depth': node.depth,
             'metadata': node.metadata,
             'num_corrections': node.num_corrections,
-            'display_order': node.display_order
+            'display_order': node.display_order,
+            'num_sections': node.num_sections,
+            'num_words': node.num_words
         }
         unique_nodes.append(node_dict)
     
@@ -120,8 +122,8 @@ def insert_content_chunks(chunks: List[ContentChunk]):
             'id': chunk.id,
             'section_id': chunk.section_id,
             'chunk_number': chunk.chunk_number,
-            'content': chunk.content,
-            'content_tsvector': chunk.content_tsvector
+            'content': chunk.content
+            # Don't include content_tsvector - it will be computed by the database
         }
         unique_chunks.append(chunk_dict)
     

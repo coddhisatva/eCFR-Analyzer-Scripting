@@ -219,7 +219,7 @@ def split_content_into_chunks(content: str, section_id: str) -> List[ContentChun
                 current_chunk.append(paragraph)
                 current_size += paragraph_size
     
-    # Add the last chunk if there's anything left
+    # Add the final chunk if there's any content left
     if current_chunk:
         chunk_content = '\n\n'.join(current_chunk)
         chunk_id = f"{section_id}_chunk_{chunk_number}"
