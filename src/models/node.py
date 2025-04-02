@@ -28,4 +28,5 @@ class Node:
     parent: Optional[str] = None  # Parent node ID
     top_level_title: Optional[str] = None  # Title number this belongs to
     reserved: Optional[str] = None  # For 'reserved' sections
+    depth: Optional[int] = None  # Depth in the hierarchy
     metadata: Optional[Dict[str, Any]] = None  # Additional metadata

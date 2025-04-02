@@ -232,7 +232,7 @@ def split_content_into_chunks(content: str, section_id: str) -> List[ContentChun
     
     return chunks
 
-def process_children(parent_element, parent_components, parent_id, title_num, nodes, chunks):
+def process_children(parent_element, parent_components, parent_id, title_num, nodes, chunks, depth):
     """Process child elements recursively"""
     if not parent_element:
         return
@@ -288,7 +288,8 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 node_name=div_name,
                 parent=parent_id,
                 top_level_title=title_num,
-                metadata=metadata
+                metadata=metadata,
+                depth=depth
             )
             
             # Add chunks to the list
@@ -304,13 +305,14 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
                 number=div_num,
                 node_name=div_name,
                 parent=parent_id,
-                top_level_title=title_num
+                top_level_title=title_num,
+                depth=depth
             )
         
         nodes.append(div_node)
         
         # Process children recursively
-        process_children(div, div_components, div_id, title_num, nodes, chunks)
+        process_children(div, div_components, div_id, title_num, nodes, chunks, depth + 1)
 
 def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk]]:
     """
@@ -365,7 +367,8 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
             level_type="title",
             number=title_num,
             node_name=title_name,
-            top_level_title=title_num
+            top_level_title=title_num,
+            depth=0
         )
         
         # Lists to hold all nodes and chunks
@@ -373,7 +376,7 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
         chunks = []
         
         # Process the hierarchy recursively
-        process_children(title_element, title_components, title_id, title_num, nodes, chunks)
+        process_children(title_element, title_components, title_id, title_num, nodes, chunks, depth=1)
         
         logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes and {len(chunks)} chunks")
         return nodes, chunks
