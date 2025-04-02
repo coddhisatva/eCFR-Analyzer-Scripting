@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS agencies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    parent_id TEXT REFERENCES agencies(id),  -- Hierarchical structure
+    depth INTEGER DEFAULT 0,  -- Hierarchy depth (0 for top-level agencies)
     num_children INTEGER DEFAULT 0,
     num_cfr INTEGER DEFAULT 0,
     num_words INTEGER DEFAULT 0,
@@ -21,6 +23,12 @@ CREATE INDEX IF NOT EXISTS agencies_name_idx ON agencies(name);
 
 -- Index for agency metrics
 CREATE INDEX IF NOT EXISTS agencies_metrics_idx ON agencies(num_children, num_cfr, num_words, num_sections);
+
+-- Index for agency hierarchy navigation
+CREATE INDEX IF NOT EXISTS agencies_parent_idx ON agencies(parent_id);
+
+-- Index for depth-based queries
+CREATE INDEX IF NOT EXISTS agencies_depth_idx ON agencies(depth);
 
 CREATE TABLE cfr_references (
     id SERIAL PRIMARY KEY,

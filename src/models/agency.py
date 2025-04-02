@@ -47,6 +47,8 @@ class Agency(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    parent_id: Optional[str] = None  # Reference to parent agency
+    depth: int = 0  # Hierarchy depth (0 for top-level agencies)
     num_children: int = 0
     num_cfr: int = 0
     num_words: int = 0

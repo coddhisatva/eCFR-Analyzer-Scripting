@@ -51,14 +51,41 @@ def compute_agency_metrics(agency_id: str) -> Dict[str, int]:
         'num_cfr': len(cfr_refs)
     }
 
+def calculate_agency_depth(agency_id: str, depth_cache: Dict[str, int] = None) -> int:
+    """Calculate depth of an agency by traversing up the parent chain"""
+    if depth_cache is None:
+        depth_cache = {}
+    
+    if agency_id in depth_cache:
+        return depth_cache[agency_id]
+    
+    client = get_supabase_client()
+    result = client.table('agencies').select('parent_id').eq('id', agency_id).execute()
+    parent_id = result.data[0].get('parent_id') if result.data else None
+    
+    if not parent_id:
+        depth_cache[agency_id] = 0
+        return 0
+    
+    depth = calculate_agency_depth(parent_id, depth_cache) + 1
+    depth_cache[agency_id] = depth
+    return depth
+
 def process_agencies():
     """Process all agencies and update their metrics"""
     client = get_supabase_client()
     
     # Get all agencies
-    result = client.table('agencies').select('id').execute()
+    result = client.table('agencies').select('id', 'parent_id').execute()
     agencies = result.data
     logger.info(f"Found {len(agencies)} agencies to process")
+    
+    # Calculate depths for all agencies
+    depth_cache = {}
+    for agency in agencies:
+        agency_id = agency['id']
+        depth = calculate_agency_depth(agency_id, depth_cache)
+        agency['depth'] = depth
     
     # Process in batches
     updates = []
@@ -68,6 +95,7 @@ def process_agencies():
         
         updates.append({
             'id': agency_id,
+            'depth': agency['depth'],
             **metrics
         })
         
