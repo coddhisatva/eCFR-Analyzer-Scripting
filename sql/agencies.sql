@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS agencies_id_idx ON agencies(id);
 -- Index for agency name searches
 CREATE INDEX IF NOT EXISTS agencies_name_idx ON agencies(name);
 
--- Index for agency metrics
+-- Index for agency metrics (composite index for all numeric fields)
 CREATE INDEX IF NOT EXISTS agencies_metrics_idx ON agencies(num_children, num_cfr, num_words, num_sections, num_corrections);
 
 -- Index for agency hierarchy navigation
@@ -33,9 +33,6 @@ CREATE INDEX IF NOT EXISTS agencies_depth_idx ON agencies(depth);
 
 -- Index for CFR references array
 CREATE INDEX IF NOT EXISTS agencies_cfr_refs_idx ON agencies USING GIN (cfr_references);
-
--- Index for correction counts
-CREATE INDEX IF NOT EXISTS agencies_corrections_idx ON agencies(num_corrections);
 
 CREATE TABLE cfr_references (
     id SERIAL PRIMARY KEY,
@@ -49,7 +46,6 @@ CREATE TABLE cfr_references (
 
 CREATE INDEX cfr_references_agency_idx ON cfr_references(agency_id);
 
---hard part ******** start--
 CREATE TABLE agency_node_mappings (
     id SERIAL PRIMARY KEY,
     agency_id TEXT NOT NULL REFERENCES agencies(id),
@@ -58,11 +54,11 @@ CREATE TABLE agency_node_mappings (
     UNIQUE(agency_id, node_id)  -- Prevent duplicate mappings
 );
 
--- query, filter by agency (More, like sql in agency node strat)
+-- Index for agency lookups in mappings
 CREATE INDEX agency_node_mappings_agency_idx ON agency_node_mappings(agency_id);
--- see agencies under node page
+
+-- Index for node lookups in mappings
 CREATE INDEX agency_node_mappings_node_idx ON agency_node_mappings(node_id);
---hard part end ************---
 
 -- order by numsections
 CREATE INDEX agencies_num_sections_idx ON agencies(num_sections);
