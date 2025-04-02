@@ -3,7 +3,8 @@
 Agency model for regulatory agencies
 """
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 
 @dataclass
 class Agency:
@@ -39,4 +40,15 @@ class Agency:
     num_words: int = 0
     num_sections: int = 0
     num_corrections: int = 0
-    num_cfr_refs: int = 0 
+    num_cfr_refs: int = 0
+
+class Agency(BaseModel):
+    """Model for an agency in the database"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    num_children: int = 0
+    num_cfr: int = 0
+    num_words: int = 0
+    num_sections: int = 0
+    cfr_references: List[str] = [] 

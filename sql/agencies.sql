@@ -2,30 +2,25 @@ DROP TABLE IF EXISTS agencies CASCADE;
 DROP TABLE IF EXISTS cfr_references CASCADE;
 DROP TABLE IF EXISTS agency_node_mappings CASCADE;
 
-CREATE TABLE agencies (
-    id TEXT PRIMARY KEY,  -- Using slug as ID for readability
+CREATE TABLE IF NOT EXISTS agencies (
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    short_name TEXT,
-    display_name TEXT,
-    sortable_name TEXT,
-    parent_id TEXT REFERENCES agencies(id),  -- Hierarchical structure
-    depth INTEGER DEFAULT 0,  -- Hierarchy depth (0 for top-level agencies)
-    agency_type TEXT,  -- 'beg', 'middle', 'zed'
-    metadata JSONB,  -- For flexible storage of additional data
-	num_children INTEGER DEFAULT 0,
-	num_words INTEGER DEFAULT 0,
-	num_sections INTEGER DEFAULT 0,
-	num_corrections INTEGER DEFAULT 0,
-	num_cfr_refs INTEGER DEFAULT 0  -- Number of CFR references for this relationship
+    description TEXT,
+    num_children INTEGER DEFAULT 0,
+    num_cfr INTEGER DEFAULT 0,
+    num_words INTEGER DEFAULT 0,
+    num_sections INTEGER DEFAULT 0,
+    cfr_references TEXT[] DEFAULT '{}'
 );
 
--- Indexes for agency hierarchy navigation --
--- For list subagenciesi in agency view
-CREATE INDEX agencies_parent_idx ON agencies(parent_id);
+-- Index for agency lookups
+CREATE INDEX IF NOT EXISTS agencies_id_idx ON agencies(id);
 
--- for agencies page
-CREATE INDEX agencies_beg_type_idx ON agencies(agency_type) WHERE agency_type = 'beg';
+-- Index for agency name searches
+CREATE INDEX IF NOT EXISTS agencies_name_idx ON agencies(name);
 
+-- Index for agency metrics
+CREATE INDEX IF NOT EXISTS agencies_metrics_idx ON agencies(num_children, num_cfr, num_words, num_sections);
 
 CREATE TABLE cfr_references (
     id SERIAL PRIMARY KEY,
@@ -39,8 +34,6 @@ CREATE TABLE cfr_references (
 
 CREATE INDEX cfr_references_agency_idx ON cfr_references(agency_id);
 
-
-
 --hard part ******** start--
 CREATE TABLE agency_node_mappings (
     id SERIAL PRIMARY KEY,
@@ -49,10 +42,6 @@ CREATE TABLE agency_node_mappings (
     metadata JSONB,  -- Additional information about the relationship
     UNIQUE(agency_id, node_id)  -- Prevent duplicate mappings
 );
-
-
-
-
 
 -- query, filter by agency (More, like sql in agency node strat)
 CREATE INDEX agency_node_mappings_agency_idx ON agency_node_mappings(agency_id);
