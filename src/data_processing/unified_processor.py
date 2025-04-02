@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 from collections import defaultdict
+import json
 
 from src.models.node import Node
 from src.models.content_chunk import ContentChunk
@@ -302,6 +303,12 @@ class UnifiedProcessor:
         """Process agency data and build relationships in memory"""
         from src.data_processing.process_agencies import process_agency_data, process_cfr_references, process_agency_node_mappings
         
+        # Get agency slug/id - handle missing slugs gracefully
+        agency_slug = agency_data.get('slug')
+        if not agency_slug:
+            logger.warning(f"Skipping agency without slug: {agency_data.get('name', 'Unknown')}")
+            return
+        
         # Process agency hierarchy
         agencies = process_agency_data(agency_data)
         
@@ -312,11 +319,11 @@ class UnifiedProcessor:
                 self.agency_by_parent[agency.parent_id].append(agency)
         
         # Process CFR references
-        references = process_cfr_references(agency_data['slug'], agency_data.get('cfr_references', []))
+        references = process_cfr_references(agency_slug, agency_data.get('cfr_references', []))
         self.cfr_references.extend(references)
         
         # Process agency-node mappings
-        mappings = process_agency_node_mappings(agency_data['slug'], agency_data.get('cfr_references', []))
+        mappings = process_agency_node_mappings(agency_slug, agency_data.get('cfr_references', []))
         for mapping in mappings:
             self.agency_node_mappings.append(mapping)
             self.mappings_by_agency[mapping.agency_id].append(mapping)
@@ -327,7 +334,7 @@ class UnifiedProcessor:
         self._calculate_agency_counts()
         
         # Update agency metrics based on references
-        self._update_agency_metrics(agency_data['slug'])
+        self._update_agency_metrics(agency_slug)
         
         # Validate agency hierarchy and relationships
         if not self._validate_agency_hierarchy():
@@ -508,6 +515,91 @@ class UnifiedProcessor:
         mappings_data = [mapping.__dict__ for mapping in self.agency_node_mappings]
         self.client.table('agency_node_mappings').upsert(mappings_data).execute()
         logger.info(f"Wrote {len(mappings_data)} agency-node mappings")
+
+    def process_all_data(self, args):
+        """Process all data from raw files into database entities"""
+        logger.info("Starting data processing...")
+        
+        # Process titles first
+        title_dir = os.path.join("data", "raw", "titles", args.date)
+        for filename in sorted(os.listdir(title_dir)):
+            if not filename.endswith(".xml"):
+                continue
+            file_path = os.path.join(title_dir, filename)
+            try:
+                self.process_title(file_path)
+            except Exception as e:
+                logger.error(f"Error processing title file {filename}: {e}")
+                # Continue with next title if one fails
+                continue
+        
+        # Calculate section counts after all titles processed
+        logger.info("Calculating section counts...")
+        try:
+            self._calculate_all_section_counts()
+        except Exception as e:
+            logger.error(f"Error calculating section counts: {e}")
+            # This is critical - we should raise this error
+            raise
+        
+        # Process agency data
+        logger.info("Processing agency data")
+        agency_dir = os.path.join("data", "raw", "agencies", args.date)
+        agency_file = os.path.join(agency_dir, "agencies.json")
+        
+        try:
+            with open(agency_file, 'r', encoding='utf-8') as f:
+                agency_data = json.load(f)
+            
+            # Process each agency independently
+            for agency in agency_data.get('agencies', []):
+                try:
+                    self.process_agency(agency)
+                except Exception as e:
+                    logger.error(f"Error processing agency {agency.get('name', 'Unknown')}: {e}")
+                    # Continue with next agency if one fails
+                    continue
+        except Exception as e:
+            logger.error(f"Error reading agency file {agency_file}: {e}")
+            # This is important but not critical - we can continue
+            logger.warning("Skipping agency processing due to error")
+        
+        # Process corrections
+        logger.info("Processing corrections")
+        corrections_dir = os.path.join("data", "raw", "corrections", args.date)
+        try:
+            for filename in os.listdir(corrections_dir):
+                if not filename.endswith(".json"):
+                    continue
+                file_path = os.path.join(corrections_dir, filename)
+                try:
+                    self.process_correction_file(file_path)
+                except Exception as e:
+                    logger.error(f"Error processing correction file {filename}: {e}")
+                    # Continue with next correction file if one fails
+                    continue
+        except Exception as e:
+            logger.error(f"Error reading corrections directory {corrections_dir}: {e}")
+            # This is important but not critical - we can continue
+            logger.warning("Skipping corrections processing due to error")
+        
+        # Validate everything
+        logger.info("Validating processed data...")
+        try:
+            if not self._validate_all():
+                logger.error("Validation failed!")
+                raise ValueError("Data validation failed")
+        except Exception as e:
+            logger.error(f"Error during validation: {e}")
+            raise
+        
+        # Write to database
+        logger.info("Writing to database...")
+        try:
+            self._write_to_database()
+        except Exception as e:
+            logger.error(f"Error writing to database: {e}")
+            raise
 
 def process_all_data(date: str) -> None:
     """Process all data for a given date using the unified processor"""
