@@ -340,6 +340,47 @@ def process_all_agencies(date=None):
         file_path = os.path.join(input_dir, filename)
         process_agency_file(file_path)
 
+def find_matching_node_id(client, title: int, subheading: str) -> Optional[str]:
+    """
+    Find a matching node ID when exact match fails.
+    Since chapters are unique within a title, we can reliably find the correct node
+    by matching both title and chapter number.
+    
+    Args:
+        client: Supabase client
+        title: CFR title number
+        subheading: CFR subheading (chapter/subchapter/etc)
+        
+    Returns:
+        Matching node ID if found, None otherwise
+    """
+    try:
+        # First try exact match
+        exact_match = client.table('nodes').select('id').eq('id', f"us/federal/ecfr/title={title}/{subheading}").execute()
+        if exact_match.data:
+            return exact_match.data[0]['id']
+            
+        # If no exact match, extract the chapter number if this is a chapter reference
+        subheading_parts = subheading.split('=')
+        if len(subheading_parts) != 2:
+            return None
+            
+        subheading_type, subheading_value = subheading_parts
+        
+        # If this is a chapter reference, we can reliably find it by title and chapter
+        # since chapters are unique within a title
+        if subheading_type.lower() == 'chapter':
+            # Search for any node with this title and chapter number
+            result = client.table('nodes').select('id').ilike('id', f"%/title={title}%/chapter={subheading_value}%").execute()
+            if result.data:
+                # Since chapters are unique within a title, we can take the first match
+                return result.data[0]['id']
+            
+    except Exception as e:
+        logger.warning(f"Error finding matching node: {e}")
+        
+    return None
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process agency data files')
     parser.add_argument('file', nargs='?', help='Single agency file to process. If not provided, processes all files for latest date.')
