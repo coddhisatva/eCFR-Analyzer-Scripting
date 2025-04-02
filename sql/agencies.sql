@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS agencies (
     num_cfr INTEGER DEFAULT 0,
     num_words INTEGER DEFAULT 0,
     num_sections INTEGER DEFAULT 0,
+    num_corrections INTEGER DEFAULT 0,
     cfr_references TEXT[] DEFAULT '{}'
 );
 
@@ -22,7 +23,7 @@ CREATE INDEX IF NOT EXISTS agencies_id_idx ON agencies(id);
 CREATE INDEX IF NOT EXISTS agencies_name_idx ON agencies(name);
 
 -- Index for agency metrics
-CREATE INDEX IF NOT EXISTS agencies_metrics_idx ON agencies(num_children, num_cfr, num_words, num_sections);
+CREATE INDEX IF NOT EXISTS agencies_metrics_idx ON agencies(num_children, num_cfr, num_words, num_sections, num_corrections);
 
 -- Index for agency hierarchy navigation
 CREATE INDEX IF NOT EXISTS agencies_parent_idx ON agencies(parent_id);
@@ -32,6 +33,9 @@ CREATE INDEX IF NOT EXISTS agencies_depth_idx ON agencies(depth);
 
 -- Index for CFR references array
 CREATE INDEX IF NOT EXISTS agencies_cfr_refs_idx ON agencies USING GIN (cfr_references);
+
+-- Index for correction counts
+CREATE INDEX IF NOT EXISTS agencies_corrections_idx ON agencies(num_corrections);
 
 CREATE TABLE cfr_references (
     id SERIAL PRIMARY KEY,

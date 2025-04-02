@@ -19,6 +19,7 @@ class Agency(BaseModel):
         num_words: Total word count across regulated content
         num_sections: Number of regulated sections
         num_cfr: Number of CFR references
+        num_corrections: Number of corrections in regulated content
         cfr_references: List of CFR references
     """
     id: str
@@ -30,4 +31,5 @@ class Agency(BaseModel):
     num_words: int = 0
     num_sections: int = 0
     num_cfr: int = 0
+    num_corrections: int = 0
     cfr_references: List[str] = [] 
