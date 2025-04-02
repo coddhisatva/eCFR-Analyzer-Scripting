@@ -66,6 +66,8 @@ SELECT * FROM nodes
 WHERE parent = 'parent_id'
 ORDER BY display_order;
 
+CREATE INDEX nodes_top_level_title_idx ON nodes(top_level_title);
+CREATE INDEX nodes_number_idx ON nodes(number);
 -- Content nodes for querying
 CREATE INDEX nodes_node_type_content_idx ON nodes(node_type) WHERE node_type = 'content';
 -- word count
@@ -78,9 +80,6 @@ CREATE INDEX IF NOT EXISTS content_chunks_tsvector_idx ON content_chunks USING g
 CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(section_id);
 -- Combined index for finding specific chunks within a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_chunk_idx ON content_chunks(section_id, chunk_number);
-
--- Index for citation searches
-CREATE INDEX nodes_citation_idx ON nodes(citation);
 
 -- Index for node name searches
 CREATE INDEX nodes_name_idx ON nodes(node_name);
