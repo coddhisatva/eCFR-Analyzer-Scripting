@@ -29,7 +29,11 @@ def get_supabase_client() -> Client:
     if not url or not key:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
     
-    return create_client(url, key)
+    # Create client with increased timeout
+    client = create_client(url, key)
+    # Set timeout on the underlying HTTP client
+    client.postgrest.session.timeout = 300  # 5 minutes
+    return client
 
 def insert_nodes(nodes: List[Node]):
     """

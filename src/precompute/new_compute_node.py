@@ -4,6 +4,7 @@ Script to compute and update word counts and section counts for nodes and agenci
 Combines both calculations into a single tree traversal for efficiency.
 """
 import logging
+import time
 from typing import List, Dict, Any, Tuple
 from src.database.connector import get_supabase_client
 
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 1000
 node_updates = []
 
+# Retry settings
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
+
 def get_parent_id(node_id: str) -> str:
     """Get the parent ID of a node by removing the last path component"""
     parts = node_id.split('/')
@@ -22,12 +27,25 @@ def get_parent_id(node_id: str) -> str:
         return None
     return '/'.join(parts[:-1])
 
+def execute_with_retry(func, *args, **kwargs):
+    """Execute a function with retries on timeout"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {RETRY_DELAY} seconds...")
+            time.sleep(RETRY_DELAY)
+
 def get_children(parent_id: str):
     """Get all immediate children of a node"""
     client = get_supabase_client()
     
     # Use LIKE to match immediate children (one level down)
-    result = client.table('nodes').select('id').ilike('id', f"{parent_id}/%").execute()
+    result = execute_with_retry(
+        client.table('nodes').select('id').ilike('id', f"{parent_id}/%").execute
+    )
     return [node for node in result.data if get_parent_id(node['id']) == parent_id]
 
 def is_section(node_id: str) -> bool:
@@ -45,7 +63,9 @@ def batch_update_nodes():
     node_updates = node_updates[BATCH_SIZE:]
     
     for update in batch:
-        client.table('nodes').update({'metadata': update['metadata']}).eq('id', update['id']).execute()
+        execute_with_retry(
+            client.table('nodes').update({'metadata': update['metadata']}).eq('id', update['id']).execute
+        )
         logger.info(f"Updated counts for {update['id']}: {update['metadata']['word_count']} words, {update['metadata']['section_count']} sections")
 
 def compute_node_counts(node_id: str) -> Tuple[int, int]:
@@ -57,7 +77,9 @@ def compute_node_counts(node_id: str) -> Tuple[int, int]:
     client = get_supabase_client()
     
     # Get current metadata
-    result = client.table('nodes').select('metadata').eq('id', node_id).execute()
+    result = execute_with_retry(
+        client.table('nodes').select('metadata').eq('id', node_id).execute
+    )
     if not result.data:
         logger.warning(f"Node {node_id} not found")
         return 0, 0
@@ -95,7 +117,9 @@ def update_agency_counts():
     client = get_supabase_client()
     
     # Get all agency-node mappings
-    result = client.table('agency_node_mappings').select('agency_id', 'node_id').execute()
+    result = execute_with_retry(
+        client.table('agency_node_mappings').select('agency_id', 'node_id').execute
+    )
     mappings = result.data
     
     # Group by agency
@@ -112,8 +136,9 @@ def update_agency_counts():
         total_sections = 0
         
         # Get metadata for all nodes in one query
-        node_ids_str = "','".join(node_ids)
-        result = client.table('nodes').select('metadata').in_('id', node_ids).execute()
+        result = execute_with_retry(
+            client.table('nodes').select('metadata').in_('id', node_ids).execute
+        )
         
         for node_data in result.data:
             metadata = node_data.get('metadata', {})
@@ -121,10 +146,12 @@ def update_agency_counts():
             total_sections += metadata.get('section_count', 0)
         
         # Update agency
-        client.table('agencies').update({
-            'num_words': total_words,
-            'num_sections': total_sections
-        }).eq('id', agency_id).execute()
+        execute_with_retry(
+            client.table('agencies').update({
+                'num_words': total_words,
+                'num_sections': total_sections
+            }).eq('id', agency_id).execute
+        )
         logger.info(f"Updated counts for agency {agency_id}: {total_words} words, {total_sections} sections")
 
 def process_all_nodes():
@@ -133,7 +160,9 @@ def process_all_nodes():
     client = get_supabase_client()
     
     # Get all root nodes (us/federal/ecfr/title=X)
-    result = client.table('nodes').select('id').like('id', 'us/federal/ecfr/title=%').execute()
+    result = execute_with_retry(
+        client.table('nodes').select('id').like('id', 'us/federal/ecfr/title=%').execute
+    )
     root_nodes = result.data
     
     # Process each root node and its subtree

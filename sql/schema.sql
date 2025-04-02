@@ -68,5 +68,19 @@ CREATE INDEX IF NOT EXISTS content_chunks_section_chunk_idx ON content_chunks(se
 
 
 
+---QUERYING---
+-- Simple GIN index on content
+CREATE INDEX content_chunks_content_gin_idx ON content_chunks USING gin (content);
 
- 
+-- GIN index on tsvector
+CREATE INDEX content_chunks_content_tsvector_idx ON content_chunks USING gin (to_tsvector('english', content));
+
+
+
+ CREATE INDEX nodes_number_idx ON nodes(number);
+
+-- Index for citation searches
+CREATE INDEX nodes_citation_idx ON nodes(citation);
+
+-- Index for node name searches
+CREATE INDEX nodes_name_idx ON nodes(node_name);
