@@ -20,7 +20,9 @@ CREATE TABLE nodes (
     display_order INTEGER,                   -- Order of the node in the title
     reserved TEXT,                          -- For 'reserved' sections
     metadata JSONB,
-    num_corrections INTEGER DEFAULT 0                         -- Additional metadata (word counts, etc.)
+    num_corrections INTEGER DEFAULT 0,      -- Number of corrections
+    num_sections INTEGER DEFAULT 0,         -- Number of sections (1 for sections, sum of children for others)
+    num_words INTEGER DEFAULT 0             -- Word count (moved from metadata)
 );
 
 -- Create the content_chunks table (for storing large content)
@@ -52,35 +54,27 @@ SELECT * FROM nodes
 WHERE parent = 'parent_id'
 ORDER BY display_order;
 
-
 -- Content nodes for querying
 CREATE INDEX nodes_node_type_content_idx ON nodes(node_type) WHERE node_type = 'content';
 -- word count
-CREATE INDEX nodes_metadata_word_count_idx ON nodes USING btree ((metadata->>'word_count'));
+CREATE INDEX nodes_num_words_idx ON nodes(num_words);
 
 --CHUNKS
 -- Primary search
 CREATE INDEX IF NOT EXISTS content_chunks_tsvector_idx ON content_chunks USING gin(content_tsvector);
 -- Section ID index: For finding all chunks of a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(section_id);
-
-CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(node_id);
 -- Combined index for finding specific chunks within a section
 CREATE INDEX IF NOT EXISTS content_chunks_section_chunk_idx ON content_chunks(section_id, chunk_number);
-
-
-
----QUERYING---
--- Simple GIN index on content
-CREATE INDEX content_chunks_content_gin_idx ON content_chunks USING gin (content);
-
--- GIN index on tsvector
-CREATE INDEX content_chunks_content_tsvector_idx ON content_chunks USING gin (to_tsvector('english', content));
-
+-- Index for finding chunks by node
+CREATE INDEX IF NOT EXISTS content_chunks_section_id_idx ON content_chunks(node_id);
 
 -- Index for citation searches
 CREATE INDEX nodes_citation_idx ON nodes(citation);
 
 -- Index for node name searches
 CREATE INDEX nodes_name_idx ON nodes(node_name);
+
+-- Index for efficient section summing
+CREATE INDEX nodes_parent_level_type_idx ON nodes(parent, level_type);
 

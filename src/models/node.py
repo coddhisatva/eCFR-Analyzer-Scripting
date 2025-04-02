@@ -12,7 +12,6 @@ class Node:
     
     Metadata structure for content nodes:
     {
-        'word_count': int,  # Total word count across all chunks
         'total_chunks': int,  # Total number of chunks
         'first_chunk_id': str,  # ID of first chunk
         'last_chunk_id': str  # ID of last chunk
@@ -32,3 +31,5 @@ class Node:
     depth: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
     num_corrections: Optional[int] = None
+    num_sections: Optional[int] = None  # 1 for sections, sum of children for others
+    num_words: Optional[int] = None  # Word count (moved from metadata)

@@ -22,7 +22,6 @@ class Correction:
         fr_citation: Federal Register citation
         position: Position in the document
         year: Year of the correction
-        metadata: Additional information about the correction
     """
     id: int
     node_id: str
@@ -33,5 +32,4 @@ class Correction:
     correction_duration: Optional[int] = None
     fr_citation: Optional[str] = None
     position: Optional[int] = None
-    year: Optional[int] = None
-    metadata: Optional[Dict[str, Any]] = None 
+    year: Optional[int] = None 

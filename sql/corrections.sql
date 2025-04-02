@@ -17,6 +17,9 @@ CREATE TABLE corrections (
 -- Index for finding corrections by node
 CREATE INDEX corrections_node_idx ON corrections(node_id);
 
+-- Index for finding corrections by agency
+CREATE INDEX corrections_agency_id_idx ON corrections(agency_id);
+
 -- Index for finding corrections by date ranges
 CREATE INDEX corrections_corrected_idx ON corrections(error_corrected);
 CREATE INDEX corrections_occurred_idx ON corrections(error_occurred);
@@ -24,11 +27,11 @@ CREATE INDEX corrections_occurred_idx ON corrections(error_occurred);
 -- Index for finding corrections by title
 CREATE INDEX corrections_title_idx ON corrections(title);
 
---longest correction duration
+-- Index for finding longest correction duration
 CREATE INDEX corrections_duration_idx ON corrections(correction_duration);
 
-CREATE INDEX corrections_agency_id_idx ON corrections(agency_id);
-
+-- Index for counting corrections per agency
+CREATE INDEX corrections_agency_count_idx ON corrections(agency_id, id);
 
 CREATE INDEX nodes_num_corrections_idx ON nodes(num_corrections);
 
