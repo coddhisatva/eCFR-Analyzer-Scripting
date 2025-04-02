@@ -30,6 +30,9 @@ CREATE INDEX IF NOT EXISTS agencies_parent_idx ON agencies(parent_id);
 -- Index for depth-based queries
 CREATE INDEX IF NOT EXISTS agencies_depth_idx ON agencies(depth);
 
+-- Index for CFR references array
+CREATE INDEX IF NOT EXISTS agencies_cfr_refs_idx ON agencies USING GIN (cfr_references);
+
 CREATE TABLE cfr_references (
     id SERIAL PRIMARY KEY,
     agency_id TEXT NOT NULL REFERENCES agencies(id) ON DELETE SET NULL,
