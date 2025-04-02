@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: ecfr-analyzer
+Version: 0.1
+Requires-Dist: supabase
+Dynamic: requires-dist
