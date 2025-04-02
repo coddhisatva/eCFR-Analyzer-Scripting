@@ -1,66 +1,46 @@
-# eCFR Analyzer Scripting
+# eCFR Analyzer
 
-A tool for downloading, processing, and analyzing the Electronic Code of Federal Regulations (eCFR).
+A tool for analyzing and processing eCFR (Electronic Code of Federal Regulations) data.
 
 ## Setup
 
-1. Create a virtual environment and activate it:
+1. Create and activate virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3 -m venv venv
+source venv/bin/activate  # On Unix/macOS
+# or
+.\venv\Scripts\activate  # On Windows
 ```
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-3. Copy `.env.example` to `.env` and fill in your Supabase credentials:
+## Processing Data
+
+1. Process all XML files:
 ```bash
-cp .env.example .env
+python src/data_processing/process_xml.py --input-dir data/raw/2024-03-31
 ```
 
-## Usage
-
-### Process a specific title:
-
-1. Process XML data:
+2. Compute node counts:
 ```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_xml.py data/raw/titles/2025-03-31/title-5.xml
+python src/precompute/compute_node_counts.py
 ```
 
-2. Process agency data:
+3. Process agencies:
 ```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_agencies.py data/raw/agencies/2025-03-31/agency-title-5.json
+python src/precompute/process_agencies.py
 ```
 
-3. Process corrections data:
+4. Compute correction counts:
 ```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_corrections.py data/raw/corrections/2025-03-31/corrections-title-5.json
+python src/precompute/compute_correction_counts.py
 ```
 
-### Process all files for a specific date:
+## Development
 
-1. Process all XML data:
-```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_xml.py data/raw/titles/2025-03-31/
-```
-
-2. Process all agency data:
-```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_agencies.py data/raw/agencies/2025-03-31/
-```
-
-3. Process all corrections data:
-```bash
-PYTHONPATH=/path/to/project python3 src/data_processing/process_corrections.py data/raw/corrections/2025-03-31/
-```
-
-## Project Structure
-
-- `src/data_collection/`: Scripts for downloading data
-- `src/data_processing/`: Scripts for processing data
-- `src/models/`: Data models
-- `src/database/`: Database connection and operations
-- `data/raw/`: Raw XML files
-- `data/processed/`: Processed data
+- The project uses Python 3.x
+- Dependencies are managed via `requirements.txt`
+- The project is installed in development mode for easy imports

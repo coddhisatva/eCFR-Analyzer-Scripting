@@ -431,6 +431,7 @@ def process_all_titles(date=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process CFR XML files')
     parser.add_argument('file', nargs='?', help='Single XML file to process. If not provided, processes all files for latest date.')
+    parser.add_argument('--date', '-d', help='Date to process files for (YYYY-MM-DD)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     
     args = parser.parse_args()
@@ -471,5 +472,5 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Error inserting data from {args.file}: {e}")
     else:
-        # Process all files for latest date
-        process_all_titles()
+        # Process all files for specified date or latest date
+        process_all_titles(args.date)
