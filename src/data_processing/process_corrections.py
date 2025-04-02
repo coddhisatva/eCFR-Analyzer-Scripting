@@ -26,11 +26,12 @@ def ensure_directory_exists(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-def clean_text(text: str) -> str:
+def clean_text(text: Any) -> str:
     """Clean and normalize text."""
     if text is None:
         return ""
-    return text.strip()
+    # Convert to string if not already
+    return str(text).strip()
 
 def parse_date(date_str: str) -> datetime:
     """Parse date string into datetime object."""
@@ -101,6 +102,7 @@ def process_correction_data(correction_data: Dict[str, Any]) -> List[Correction]
         
         # Create correction entity
         correction = Correction(
+            id=correction_data.get('id'),  # Get ID from input data
             node_id=node_id,
             title=correction_data.get('title', ''),
             corrective_action=clean_text(correction_data.get('corrective_action', '')),
