@@ -23,8 +23,8 @@ from src.models.content_chunk import ContentChunk
 from src.database.connector import insert_nodes, insert_content_chunks
 
 # Directory for raw and processed data
-RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
-PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed")
+RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "titles")
+PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed", "titles")
 
 # Base URL for CFR content
 BASE_URL = "https://www.ecfr.gov/current"
@@ -398,67 +398,25 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
 
 def process_all_titles(date=None):
     """
-    Process all downloaded XML files for a specific date
+    Process all title XML files for a specific date
     
     Args:
         date: The date of the files to process (default: current date)
-    
-    Returns:
-        Total number of nodes processed
     """
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
     
     input_dir = os.path.join(RAW_DATA_DIR, date)
     if not os.path.exists(input_dir):
-        print(f"No data found for date {date}")
-        return 0
-    
-    total_nodes = 0
-    total_chunks = 0
-    
-    # Titles to skip (1-4, 35, and 40)
-    skip_titles = set(range(1, 5)) | {35, 40}
+        logger.error(f"No data found for date {date}")
+        return
     
     for filename in os.listdir(input_dir):
-        if not filename.endswith(".xml"):
+        if not filename.endswith(".xml") or not filename.startswith("title-"):
             continue
-            
-        # Extract title number from filename
-        title_match = re.search(r'title-(\d+)\.xml', filename)
-        if not title_match:
-            continue
-            
-        title_num = int(title_match.group(1))
-        if title_num in skip_titles:
-            print(f"Skipping Title {title_num} (already processed)")
-            continue
-            
-        xml_file_path = os.path.join(input_dir, filename)
-        nodes, chunks = process_title_xml(xml_file_path)
         
-        if nodes:
-            # Write processed nodes to file for backup
-            output_file = os.path.join(PROCESSED_DATA_DIR, f"title-{title_num}-processed.txt")
-            
-            with open(output_file, "w", encoding="utf-8") as f:
-                for node in nodes:
-                    f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
-            
-            # Insert nodes and chunks into database
-            try:
-                insert_nodes(nodes)
-                if chunks:
-                    insert_content_chunks(chunks)
-                print(f"Inserted {len(nodes)} nodes and {len(chunks)} chunks for {filename}")
-            except Exception as e:
-                print(f"Error inserting data for {filename}: {e}")
-            
-            total_nodes += len(nodes)
-            total_chunks += len(chunks)
-    
-    print(f"Processed {total_nodes} total nodes and {total_chunks} total chunks")
-    return total_nodes
+        file_path = os.path.join(input_dir, filename)
+        process_title_xml(file_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process CFR XML files')

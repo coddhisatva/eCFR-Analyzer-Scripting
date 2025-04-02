@@ -14,8 +14,9 @@ import argparse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Directory for raw data
-RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
+# Directory for raw and processed data
+RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "agencies")
+PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed", "agencies")
 
 # API Base URL
 API_BASE_URL = "https://www.ecfr.gov/api/admin/v1"
@@ -31,41 +32,35 @@ def clean_text(text: str) -> str:
         return ""
     return text.strip()
 
-def download_all_agencies(date: str):
+def download_agencies(date=None):
     """
-    Download all agency data for a specific date
+    Download agency data from the eCFR API.
     
     Args:
-        date: The date to download data for (YYYY-MM-DD)
+        date: The date to use for the data (default: current date)
     """
-    # Create directory for the date
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Create date directory
     date_dir = os.path.join(RAW_DATA_DIR, date)
     ensure_directory_exists(date_dir)
     
-    # Download from the agencies endpoint
-    url = f"{API_BASE_URL}/agencies.json"
+    # Download agencies data
+    url = "https://www.ecfr.gov/api/admin/v1/agencies.json"
     logger.info(f"Downloading agencies from: {url}")
     
     try:
-        response = requests.get(url, headers={"accept": "application/json"})
+        response = requests.get(url)
         response.raise_for_status()
-        data = response.json()
         
-        # Save the complete agency data
-        file_path = os.path.join(date_dir, "agencies.json")
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved agency data to {file_path}")
+        # Save raw data
+        output_file = os.path.join(date_dir, "agencies.json")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(response.json(), f, indent=2)
         
-        # Also save individual agency files for easier processing
-        for agency in data.get('agencies', []):
-            agency_id = agency.get('id')
-            if agency_id:
-                agency_file = os.path.join(date_dir, f"agency-{agency_id}.json")
-                with open(agency_file, 'w', encoding='utf-8') as f:
-                    json.dump(agency, f, indent=2, ensure_ascii=False)
-                logger.info(f"Saved individual agency data to {agency_file}")
-            
+        logger.info(f"Saved agency data to {output_file}")
+        
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading agencies: {e}")
         raise
@@ -82,4 +77,4 @@ if __name__ == "__main__":
     if not args.verbose:
         logger.setLevel(logging.INFO)
     
-    download_all_agencies(args.date) 
+    download_agencies(args.date) 

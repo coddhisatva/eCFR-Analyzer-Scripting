@@ -14,9 +14,9 @@ import argparse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Directory for raw data
-RAW_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
-CORRECTIONS_DIR = os.path.join(RAW_DIR, "corrections")
+# Directory for raw and processed data
+RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "corrections")
+PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed", "corrections")
 
 # API Base URL
 API_BASE_URL = "https://www.ecfr.gov/api/admin/v1"
@@ -62,7 +62,7 @@ def download_all_corrections(date: str):
         date: The date to download data for (YYYY-MM-DD)
     """
     # Create directory for the date
-    date_dir = os.path.join(CORRECTIONS_DIR, date)
+    date_dir = os.path.join(RAW_DATA_DIR, date)
     ensure_directory_exists(date_dir)
     
     # List of titles to download (1-50 excluding skipped titles)
@@ -87,6 +87,40 @@ def download_all_corrections(date: str):
         else:
             logger.warning(f"No corrections data retrieved for title {title}")
 
+def download_corrections(title: int, date=None):
+    """
+    Download corrections data for a specific title from the eCFR API.
+    
+    Args:
+        title: The CFR title number to download corrections for
+        date: The date to use for the data (default: current date)
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Create date directory
+    date_dir = os.path.join(RAW_DATA_DIR, date)
+    ensure_directory_exists(date_dir)
+    
+    # Download corrections data
+    url = f"https://www.ecfr.gov/api/admin/v1/corrections/title/{title}.json"
+    logger.info(f"Downloading corrections for title {title} from: {url}")
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        # Save raw data
+        output_file = os.path.join(date_dir, f"corrections-title-{title}.json")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(response.json(), f, indent=2)
+        
+        logger.info(f"Saved corrections data to {output_file}")
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error downloading corrections for title {title}: {e}")
+        raise
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download corrections data from eCFR API')
     parser.add_argument('--date', help='Date to download data for (YYYY-MM-DD)', 
@@ -100,15 +134,15 @@ if __name__ == "__main__":
     if not args.verbose:
         logger.setLevel(logging.INFO)
     
-    ensure_directory_exists(RAW_DIR)
-    ensure_directory_exists(CORRECTIONS_DIR)
+    ensure_directory_exists(RAW_DATA_DIR)
+    ensure_directory_exists(PROCESSED_DATA_DIR)
     
     if args.title:
         # Download single title
         logger.info(f"Downloading corrections for title {args.title}")
         data = download_corrections_for_title(args.title)
         if data:
-            file_path = os.path.join(CORRECTIONS_DIR, args.date, f"corrections-title-{args.title}.json")
+            file_path = os.path.join(RAW_DATA_DIR, args.date, f"corrections-title-{args.title}.json")
             ensure_directory_exists(os.path.dirname(file_path))
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
