@@ -333,16 +333,24 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
 
 def propagate_node_values(nodes):
     """Propagate num_sections and num_words up the tree"""
+    logger.info("Starting value propagation...")
     # Process nodes in reverse order (bottom-up)
     for node in reversed(nodes):
         if node.parent:  # If this node has a parent
+            logger.info(f"Processing node {node.id} (type: {node.level_type}) with parent {node.parent}")
+            logger.info(f"  Current values - sections: {node.num_sections}, words: {node.num_words}")
             # Find the parent node
             for parent in nodes:
                 if parent.id == node.parent:
+                    logger.info(f"  Found parent {parent.id} (type: {parent.level_type})")
+                    logger.info(f"  Parent current values - sections: {parent.num_sections}, words: {parent.num_words}")
                     # Add this node's values to parent
                     parent.num_sections += node.num_sections
                     parent.num_words += node.num_words
+                    logger.info(f"  Updated parent values - sections: {parent.num_sections}, words: {parent.num_words}")
                     break
+            else:
+                logger.warning(f"  Could not find parent node {node.parent}")
 
 def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk]]:
     """
@@ -401,7 +409,9 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
             top_level_title=title_num,
             depth=0,
             display_order=display_order_counter,  # First node gets 1
-            num_corrections=0
+            num_corrections=0,
+            num_sections=0,  # Initialize to 0
+            num_words=0  # Initialize to 0
         )
         
         # Lists to hold all nodes and chunks
@@ -447,18 +457,6 @@ def save_to_json(nodes: List[Node], chunks: List[ContentChunk], title_num: str) 
         # Ensure top_level_title is an integer
         if node_dict['top_level_title']:
             node_dict['top_level_title'] = int(node_dict['top_level_title'])
-        
-        # Handle num_sections and num_words based on level_type
-        if node_dict['level_type'] in ["section", "appendix"]:
-            # For sections and appendices, ensure num_sections is 1
-            node_dict['num_sections'] = 1
-            # Calculate total word count from chunks
-            matching_chunks = [c for c in chunks if c.section_id == node_dict['id']]
-            node_dict['num_words'] = sum(len(chunk.content.split()) for chunk in matching_chunks)
-        else:
-            # For all other level types (title, chapter, part, etc.)
-            node_dict['num_sections'] = 0
-            node_dict['num_words'] = 0
         
         processed_nodes.append(node_dict)
     
