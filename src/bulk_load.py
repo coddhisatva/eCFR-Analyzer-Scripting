@@ -155,7 +155,8 @@ def main():
             lambda r: (
                 r['agency_id'], r['title'], r.get('subheading'),
                 r.get('ordinal'), r.get('node_id')
-            )
+            ),
+            on_conflict="ON CONFLICT (agency_id, node_id) DO NOTHING"
         ):
             tables_loaded.append('cfr_references')
         else:
