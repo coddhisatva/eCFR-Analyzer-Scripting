@@ -13,3 +13,5 @@ db_schema_explanation_docs.md
 tree_nav_plan.md
 indexes_for_nodes.md
 strats/
+
+src/localPush/json_tables/

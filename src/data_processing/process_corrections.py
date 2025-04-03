@@ -400,43 +400,42 @@ def process_corrections_file(file_path: str, use_local_storage: bool = False):
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        corrections = data.get('ecfr_corrections', [])
+        if not corrections:
+            logger.info(f"No corrections found in {file_path}")
+            return
+        
+        title_num = corrections[0].get('title')
+        if not title_num:
+            logger.error(f"No title number found in {file_path}")
+            return
+            
         # Process corrections
         all_corrections = []
         
         if use_local_storage:
-            # Load all nodes from all title folders
-            all_nodes = []
-            all_agencies = []
-            
-            # Get all title folders
-            for title_dir in os.listdir(JSON_TABLES_DIR):
-                if not title_dir.startswith('title_'):
-                    continue
-                    
-                title_path = os.path.join(JSON_TABLES_DIR, title_dir)
-                if not os.path.isdir(title_path):
-                    continue
-                    
-                # Load nodes
-                nodes_file = os.path.join(title_path, "nodes.json")
-                if os.path.exists(nodes_file):
-                    with open(nodes_file, 'r', encoding='utf-8') as f:
-                        all_nodes.extend(json.load(f))
-                        
-                # Load agencies
-                agencies_file = os.path.join(title_path, "agencies.json")
-                if os.path.exists(agencies_file):
-                    with open(agencies_file, 'r', encoding='utf-8') as f:
-                        all_agencies.extend(json.load(f))
-            
-            logger.info(f"Loaded {len(all_nodes)} nodes and {len(all_agencies)} agencies from all title folders")
+            # Only load nodes for this title
+            title_dir = os.path.join(JSON_TABLES_DIR, f"title_{title_num}")
+            if not os.path.exists(title_dir):
+                logger.error(f"No data directory found for title {title_num}")
+                return
+                
+            # Load nodes for this title
+            nodes_file = os.path.join(title_dir, "nodes.json")
+            if not os.path.exists(nodes_file):
+                logger.error(f"No nodes.json found for title {title_num}")
+                return
+                
+            with open(nodes_file, 'r', encoding='utf-8') as f:
+                title_nodes = json.load(f)
+            logger.info(f"Loaded {len(title_nodes)} nodes for title {title_num}")
             
             # First pass: Process all corrections and build initial maps
             node_corrections = {}  # node_id -> count
             agency_corrections = {}  # agency_id -> count
             
             for correction_data in data.get('ecfr_corrections', []):
-                corrections = process_correction_data(correction_data, nodes=all_nodes)
+                corrections = process_correction_data(correction_data, nodes=title_nodes)
                 all_corrections.extend(corrections)
                 
                 # Build initial correction maps
@@ -447,55 +446,31 @@ def process_corrections_file(file_path: str, use_local_storage: bool = False):
                         agency_corrections[correction.agency_id] = agency_corrections.get(correction.agency_id, 0) + 1
             
             # Second pass: Propagate node corrections up the tree
-            for node in all_nodes:
+            for node in title_nodes:
                 if node['parent'] and node['id'] in node_corrections:
                     current_id = node['parent']
                     while current_id:
                         node_corrections[current_id] = node_corrections.get(current_id, 0) + node_corrections[node['id']]
                         # Find parent node
-                        parent_node = next((n for n in all_nodes if n['id'] == current_id), None)
+                        parent_node = next((n for n in title_nodes if n['id'] == current_id), None)
                         current_id = parent_node['parent'] if parent_node else None
             
-            # Third pass: Propagate agency corrections up the hierarchy
-            for agency in all_agencies:
-                if agency['parent_id'] and agency['id'] in agency_corrections:
-                    current_id = agency['parent_id']
-                    while current_id:
-                        agency_corrections[current_id] = agency_corrections.get(current_id, 0) + agency_corrections[agency['id']]
-                        # Find parent agency
-                        parent_agency = next((a for a in all_agencies if a['id'] == current_id), None)
-                        current_id = parent_agency['parent_id'] if parent_agency else None
-            
-            # Fourth pass: Update node and agency objects with correction counts
-            for node in all_nodes:
+            # Third pass: Update node objects with correction counts
+            for node in title_nodes:
                 node['num_corrections'] = node_corrections.get(node['id'], 0)
             
-            for agency in all_agencies:
-                agency['num_corrections'] = agency_corrections.get(agency['id'], 0)
-            
             # Save everything back to JSON
-            title_num = data.get('ecfr_corrections', [{}])[0].get('title')
-            if title_num:
-                # Save corrections
-                save_corrections_to_json(all_corrections, {
-                    'node_corrections': node_corrections,
-                    'agency_corrections': agency_corrections
-                }, title_num)
-                
-                # Save updated nodes
-                title_dir = os.path.join(JSON_TABLES_DIR, f"title_{title_num}")
-                nodes_file = os.path.join(title_dir, "nodes.json")
-                with open(nodes_file, 'w', encoding='utf-8') as f:
-                    json.dump(all_nodes, f, indent=2, ensure_ascii=False)
-                
-                # Save updated agencies
-                agencies_file = os.path.join(title_dir, "agencies.json")
-                with open(agencies_file, 'w', encoding='utf-8') as f:
-                    json.dump(all_agencies, f, indent=2, ensure_ascii=False)
-                
-                logger.info(f"Saved {len(all_corrections)} corrections and updated {len(all_nodes)} nodes and {len(all_agencies)} agencies")
-            else:
-                logger.error("Could not determine title number from corrections data")
+            # Save corrections
+            save_corrections_to_json(all_corrections, {
+                'node_corrections': node_corrections,
+                'agency_corrections': agency_corrections
+            }, title_num)
+            
+            # Save updated nodes
+            with open(nodes_file, 'w', encoding='utf-8') as f:
+                json.dump(title_nodes, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Saved {len(all_corrections)} corrections and updated {len(title_nodes)} nodes for title {title_num}")
         else:
             # Get Supabase client for database processing
             client = get_supabase_client()
