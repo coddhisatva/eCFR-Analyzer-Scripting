@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 from collections import defaultdict
 import json
+import xml.etree.ElementTree as ET
+from multiprocessing import Pool, cpu_count
 
 from src.models.node import Node
 from src.models.content_chunk import ContentChunk
@@ -469,6 +471,135 @@ class UnifiedProcessor:
         if correction_data['agency_id'] in self.agencies:
             self.agencies[correction_data['agency_id']].num_corrections += 1
 
+    def _save_backup(self, backup_dir: str = "data/processed_backup") -> None:
+        """Save all processed data to CSV files as backup"""
+        import pandas as pd
+        import os
+        from datetime import datetime
+
+        # Create backup directory with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, timestamp)
+        os.makedirs(backup_path, exist_ok=True)
+        
+        logger.info(f"Saving backup to {backup_path}")
+        
+        try:
+            # Save nodes
+            nodes_df = pd.DataFrame([node.__dict__ for node in self.nodes.values()])
+            nodes_df.to_csv(os.path.join(backup_path, "nodes.csv"), index=False)
+            
+            # Save content chunks
+            chunks_df = pd.DataFrame([chunk.__dict__ for chunk in self.content_chunks])
+            chunks_df.to_csv(os.path.join(backup_path, "content_chunks.csv"), index=False)
+            
+            # Save agencies
+            agencies_df = pd.DataFrame([agency.__dict__ for agency in self.agencies.values()])
+            agencies_df.to_csv(os.path.join(backup_path, "agencies.csv"), index=False)
+            
+            # Save CFR references
+            refs_df = pd.DataFrame([ref.__dict__ for ref in self.cfr_references])
+            refs_df.to_csv(os.path.join(backup_path, "cfr_references.csv"), index=False)
+            
+            # Save corrections
+            corrections_df = pd.DataFrame([corr.__dict__ for corr in self.corrections])
+            corrections_df.to_csv(os.path.join(backup_path, "corrections.csv"), index=False)
+            
+            # Save agency-node mappings
+            mappings_df = pd.DataFrame([mapping.__dict__ for mapping in self.agency_node_mappings])
+            mappings_df.to_csv(os.path.join(backup_path, "agency_node_mappings.csv"), index=False)
+            
+            # Save a metadata file with processing info
+            with open(os.path.join(backup_path, "metadata.json"), "w") as f:
+                import json
+                json.dump({
+                    "timestamp": timestamp,
+                    "stats": {
+                        "nodes": len(self.nodes),
+                        "content_chunks": len(self.content_chunks),
+                        "agencies": len(self.agencies),
+                        "cfr_references": len(self.cfr_references),
+                        "corrections": len(self.corrections),
+                        "agency_node_mappings": len(self.agency_node_mappings)
+                    }
+                }, f, indent=2)
+            
+            logger.info("Successfully saved backup of all processed data")
+            return backup_path
+        except Exception as e:
+            logger.error(f"Error saving backup: {e}")
+            raise
+
+    def _load_backup(self, backup_path: str) -> None:
+        """Load processed data from CSV backup"""
+        import pandas as pd
+        from src.models.node import Node
+        from src.models.content_chunk import ContentChunk
+        from src.models.agency import Agency
+        from src.models.cfr_reference import CFRReference
+        from src.models.correction import Correction
+        from src.models.agency_node_mapping import AgencyNodeMapping
+        
+        logger.info(f"Loading backup from {backup_path}")
+        
+        try:
+            # Load nodes
+            nodes_df = pd.read_csv(os.path.join(backup_path, "nodes.csv"))
+            self.nodes = {row['id']: Node(**row) for _, row in nodes_df.iterrows()}
+            
+            # Load content chunks
+            chunks_df = pd.read_csv(os.path.join(backup_path, "content_chunks.csv"))
+            self.content_chunks = [ContentChunk(**row) for _, row in chunks_df.iterrows()]
+            
+            # Load agencies
+            agencies_df = pd.read_csv(os.path.join(backup_path, "agencies.csv"))
+            self.agencies = {row['id']: Agency(**row) for _, row in agencies_df.iterrows()}
+            
+            # Load CFR references
+            refs_df = pd.read_csv(os.path.join(backup_path, "cfr_references.csv"))
+            self.cfr_references = [CFRReference(**row) for _, row in refs_df.iterrows()]
+            
+            # Load corrections
+            corrections_df = pd.read_csv(os.path.join(backup_path, "corrections.csv"))
+            self.corrections = [Correction(**row) for _, row in corrections_df.iterrows()]
+            
+            # Load agency-node mappings
+            mappings_df = pd.read_csv(os.path.join(backup_path, "agency_node_mappings.csv"))
+            self.agency_node_mappings = [AgencyNodeMapping(**row) for _, row in mappings_df.iterrows()]
+            
+            # Rebuild indexes
+            self._rebuild_indexes()
+            
+            logger.info("Successfully loaded backup data")
+        except Exception as e:
+            logger.error(f"Error loading backup: {e}")
+            raise
+
+    def _rebuild_indexes(self) -> None:
+        """Rebuild all indexes after loading from backup"""
+        # Clear existing indexes
+        self.node_by_title = defaultdict(list)
+        self.node_by_parent = defaultdict(list)
+        self.agency_by_parent = defaultdict(list)
+        self.mappings_by_agency = defaultdict(list)
+        self.mappings_by_node = defaultdict(list)
+        
+        # Rebuild node indexes
+        for node in self.nodes.values():
+            self.node_by_title[node.top_level_title].append(node)
+            if node.parent:
+                self.node_by_parent[node.parent].append(node)
+        
+        # Rebuild agency indexes
+        for agency in self.agencies.values():
+            if agency.parent_id:
+                self.agency_by_parent[agency.parent_id].append(agency)
+        
+        # Rebuild mapping indexes
+        for mapping in self.agency_node_mappings:
+            self.mappings_by_agency[mapping.agency_id].append(mapping)
+            self.mappings_by_node[mapping.node_id].append(mapping)
+
     def write_to_database(self) -> None:
         """Write all processed data to the database"""
         logger.info("Writing processed data to database...")
@@ -477,70 +608,171 @@ class UnifiedProcessor:
         if not self.validate_data():
             logger.error("Data validation failed. Aborting database write.")
             return
+            
+        # Save backup before attempting database write
+        try:
+            backup_path = self._save_backup()
+            logger.info(f"Backup saved to {backup_path}")
+        except Exception as e:
+            logger.error(f"Failed to save backup: {e}")
+            user_input = input("Failed to save backup. Continue with database write anyway? (y/n): ")
+            if user_input.lower() != 'y':
+                logger.info("Aborting database write")
+                return
         
-        # Clear existing data
-        self.client.table('nodes').delete().execute()
-        self.client.table('content_chunks').delete().execute()
-        self.client.table('agencies').delete().execute()
-        self.client.table('cfr_references').delete().execute()
-        self.client.table('corrections').delete().execute()
-        self.client.table('agency_node_mappings').delete().execute()
+        try:
+            # Clear existing data
+            self.client.table('nodes').delete().execute()
+            self.client.table('content_chunks').delete().execute()
+            self.client.table('agencies').delete().execute()
+            self.client.table('cfr_references').delete().execute()
+            self.client.table('corrections').delete().execute()
+            self.client.table('agency_node_mappings').delete().execute()
+            
+            # Write nodes
+            nodes_data = [node.__dict__ for node in self.nodes.values()]
+            self.client.table('nodes').upsert(nodes_data).execute()
+            logger.info(f"Wrote {len(nodes_data)} nodes")
+            
+            # Write content chunks
+            chunks_data = [chunk.__dict__ for chunk in self.content_chunks]
+            self.client.table('content_chunks').upsert(chunks_data).execute()
+            logger.info(f"Wrote {len(chunks_data)} content chunks")
+            
+            # Write agencies
+            agencies_data = [agency.__dict__ for agency in self.agencies.values()]
+            self.client.table('agencies').upsert(agencies_data).execute()
+            logger.info(f"Wrote {len(agencies_data)} agencies")
+            
+            # Write CFR references
+            refs_data = [ref.__dict__ for ref in self.cfr_references]
+            self.client.table('cfr_references').upsert(refs_data).execute()
+            logger.info(f"Wrote {len(refs_data)} CFR references")
+            
+            # Write corrections
+            corrections_data = [corr.__dict__ for corr in self.corrections]
+            self.client.table('corrections').upsert(corrections_data).execute()
+            logger.info(f"Wrote {len(corrections_data)} corrections")
+            
+            # Write agency-node mappings
+            mappings_data = [mapping.__dict__ for mapping in self.agency_node_mappings]
+            self.client.table('agency_node_mappings').upsert(mappings_data).execute()
+            logger.info(f"Wrote {len(mappings_data)} agency-node mappings")
+            
+        except Exception as e:
+            logger.error(f"Database write failed: {e}")
+            logger.info(f"Data is safely backed up at: {backup_path}")
+            logger.info("You can use the backup to retry the database write later")
+
+    def _process_node_tree_unified(self, node_id: str, parent_metrics: Dict = None) -> Dict:
+        """
+        Single unified pass through the node tree to calculate all metrics at once.
+        Returns a dict with all computed metrics for this subtree.
+        """
+        node = self.nodes[node_id]
+        metrics = {
+            'num_sections': 0,
+            'num_words': node.num_words or 0,  # Base word count for this node
+            'num_corrections': node.num_corrections or 0,  # Base corrections for this node
+            'agencies': set(),  # Track agencies for this subtree
+            'depth': (parent_metrics['depth'] + 1) if parent_metrics else 0
+        }
         
-        # Write nodes
-        nodes_data = [node.__dict__ for node in self.nodes.values()]
-        self.client.table('nodes').upsert(nodes_data).execute()
-        logger.info(f"Wrote {len(nodes_data)} nodes")
+        # If this is a section, count it
+        if node.level_type == 'section':
+            metrics['num_sections'] = 1
         
-        # Write content chunks
-        chunks_data = [chunk.__dict__ for chunk in self.content_chunks]
-        self.client.table('content_chunks').upsert(chunks_data).execute()
-        logger.info(f"Wrote {len(chunks_data)} content chunks")
+        # Process all children in one pass
+        for child in self.node_by_parent[node_id]:
+            child_metrics = self._process_node_tree_unified(child.id, metrics)
+            # Aggregate metrics from child
+            metrics['num_sections'] += child_metrics['num_sections']
+            metrics['num_words'] += child_metrics['num_words']
+            metrics['num_corrections'] += child_metrics['num_corrections']
+            metrics['agencies'].update(child_metrics['agencies'])
         
-        # Write agencies
-        agencies_data = [agency.__dict__ for agency in self.agencies.values()]
-        self.client.table('agencies').upsert(agencies_data).execute()
-        logger.info(f"Wrote {len(agencies_data)} agencies")
+        # Update node with computed metrics
+        node.num_sections = metrics['num_sections']
+        node.num_words = metrics['num_words']
+        node.num_corrections = metrics['num_corrections']
         
-        # Write CFR references
-        refs_data = [ref.__dict__ for ref in self.cfr_references]
-        self.client.table('cfr_references').upsert(refs_data).execute()
-        logger.info(f"Wrote {len(refs_data)} CFR references")
+        # Process agency relationships for this node
+        for mapping in self.mappings_by_node.get(node_id, []):
+            metrics['agencies'].add(mapping.agency_id)
+            agency = self.agencies[mapping.agency_id]
+            # Update agency metrics in one go
+            agency.num_sections = metrics['num_sections']
+            agency.num_words = metrics['num_words']
+            agency.num_corrections = metrics['num_corrections']
+            agency.depth = metrics['depth']
         
-        # Write corrections
-        corrections_data = [corr.__dict__ for corr in self.corrections]
-        self.client.table('corrections').upsert(corrections_data).execute()
-        logger.info(f"Wrote {len(corrections_data)} corrections")
+        return metrics
+
+    def process_title_parallel(self, file_path: str) -> Tuple[Dict, List, List]:
+        """Process a single title file, returning its nodes and content chunks"""
+        from multiprocessing import current_process
+        logger.info(f"Process {current_process().name}: Starting {file_path}")
         
-        # Write agency-node mappings
-        mappings_data = [mapping.__dict__ for mapping in self.agency_node_mappings]
-        self.client.table('agency_node_mappings').upsert(mappings_data).execute()
-        logger.info(f"Wrote {len(mappings_data)} agency-node mappings")
+        title_nodes = {}
+        title_chunks = []
+        title_mappings = []
+        
+        try:
+            # Process the XML file
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            
+            # Extract title number
+            title_num = int(os.path.basename(file_path).split('-')[1].split('.')[0])
+            
+            # Process the title structure
+            for div in root.findall('.//DIV1'):
+                nodes, chunks, mappings = self._process_div(div, title_num)
+                title_nodes.update(nodes)
+                title_chunks.extend(chunks)
+                title_mappings.extend(mappings)
+            
+            logger.info(f"Process {current_process().name}: Finished {file_path} - {len(title_nodes)} nodes, {len(title_chunks)} chunks")
+            return title_nodes, title_chunks, title_mappings
+            
+        except Exception as e:
+            logger.error(f"Error processing {file_path}: {e}")
+            return {}, [], []
 
     def process_all_data(self, args):
         """Process all data from raw files into database entities"""
+        from multiprocessing import Pool, cpu_count
+        
         logger.info("Starting data processing...")
         
-        # Process titles first
+        # Process titles in parallel
         title_dir = os.path.join("data", "raw", "titles", args.date)
-        for filename in sorted(os.listdir(title_dir)):
-            if not filename.endswith(".xml"):
-                continue
-            file_path = os.path.join(title_dir, filename)
-            try:
-                self.process_title(file_path)
-            except Exception as e:
-                logger.error(f"Error processing title file {filename}: {e}")
-                # Continue with next title if one fails
-                continue
+        title_files = sorted([os.path.join(title_dir, f) for f in os.listdir(title_dir) if f.endswith(".xml")])
         
-        # Calculate section counts after all titles processed
-        logger.info("Calculating section counts...")
-        try:
-            self._calculate_all_section_counts()
-        except Exception as e:
-            logger.error(f"Error calculating section counts: {e}")
-            # This is critical - we should raise this error
-            raise
+        # Use number of CPU cores for parallel processing
+        num_processes = min(cpu_count(), len(title_files))
+        logger.info(f"Processing {len(title_files)} titles using {num_processes} processes")
+        
+        with Pool(num_processes) as pool:
+            # Process titles in parallel and collect results
+            results = pool.map(self.process_title_parallel, title_files)
+            
+            # Combine results from all processes
+            for nodes, chunks, mappings in results:
+                self.nodes.update(nodes)
+                self.content_chunks.extend(chunks)
+                self.node_mappings.extend(mappings)
+        
+        logger.info(f"Finished processing all titles. Found {len(self.nodes)} nodes and {len(self.content_chunks)} chunks")
+        
+        # Build node relationships
+        self._build_node_relationships()
+        
+        # Single unified pass to calculate all metrics
+        logger.info("Calculating all metrics in unified pass...")
+        root_nodes = [node_id for node_id, node in self.nodes.items() if not node.parent]
+        for root_id in root_nodes:
+            self._process_node_tree_unified(root_id)
         
         # Process agency data
         logger.info("Processing agency data")
@@ -551,17 +783,15 @@ class UnifiedProcessor:
             with open(agency_file, 'r', encoding='utf-8') as f:
                 agency_data = json.load(f)
             
-            # Process each agency independently
+            # Process each agency
             for agency in agency_data.get('agencies', []):
                 try:
                     self.process_agency(agency)
                 except Exception as e:
                     logger.error(f"Error processing agency {agency.get('name', 'Unknown')}: {e}")
-                    # Continue with next agency if one fails
                     continue
         except Exception as e:
             logger.error(f"Error reading agency file {agency_file}: {e}")
-            # This is important but not critical - we can continue
             logger.warning("Skipping agency processing due to error")
         
         # Process corrections
@@ -576,30 +806,24 @@ class UnifiedProcessor:
                     self.process_correction_file(file_path)
                 except Exception as e:
                     logger.error(f"Error processing correction file {filename}: {e}")
-                    # Continue with next correction file if one fails
                     continue
         except Exception as e:
             logger.error(f"Error reading corrections directory {corrections_dir}: {e}")
-            # This is important but not critical - we can continue
             logger.warning("Skipping corrections processing due to error")
         
-        # Validate everything
-        logger.info("Validating processed data...")
-        try:
-            if not self._validate_all():
-                logger.error("Validation failed!")
-                raise ValueError("Data validation failed")
-        except Exception as e:
-            logger.error(f"Error during validation: {e}")
-            raise
+        # Save backup before database write
+        backup_path = self._save_backup()
+        logger.info(f"Backup saved to {backup_path}")
         
         # Write to database
         logger.info("Writing to database...")
         try:
             self._write_to_database()
+            logger.info("Successfully wrote all data to database")
         except Exception as e:
-            logger.error(f"Error writing to database: {e}")
-            raise
+            logger.error(f"Database write failed: {e}")
+            logger.info(f"Data is safely backed up at: {backup_path}")
+            logger.info("You can use the backup to retry the database write later")
 
 def process_all_data(date: str) -> None:
     """Process all data for a given date using the unified processor"""
