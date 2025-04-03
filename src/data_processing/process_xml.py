@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Script to process CFR XML files into database entities
+Script to process CFR XML files into database entities or local JSON storage
 """
 import os
 import xml.etree.ElementTree as ET
@@ -12,12 +12,14 @@ import html
 import traceback
 import logging
 import argparse
+import json
+from dataclasses import asdict
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import models
+# Import models and storage functions
 from src.models.node import Node
 from src.models.content_chunk import ContentChunk
 from src.database.connector import insert_nodes, insert_content_chunks
@@ -25,6 +27,7 @@ from src.database.connector import insert_nodes, insert_content_chunks
 # Directory for raw and processed data
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "titles")
 PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed", "titles")
+JSON_TABLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src", "localPush", "json_tables")
 
 # Base URL for CFR content
 BASE_URL = "https://www.ecfr.gov/current"
@@ -240,6 +243,7 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         
     # Look for immediate child DIV elements with a valid TYPE
     logger.info(f"Looking for child elements in {parent_element.name} {parent_element.get('N', '')}")
+    
     for div in parent_element.find_all(["DIV1", "DIV2", "DIV3", "DIV4", "DIV5", "DIV6", "DIV7", "DIV8", "DIV9"], recursive=False):
         div_type = div.get("TYPE", "")
         logger.info(f"Found DIV element: {div.name} with TYPE={div_type}")
@@ -262,7 +266,6 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         # Increment display order before creating node
         display_order_counter += 1
         
-        # Key change: Determine node_type based on level_type, not content
         if level_type in ["section", "appendix"]:
             # Extract content for sections and appendices
             content_elements = div.find_all(["P", "AUTH", "SOURCE", "CITA"])
@@ -325,6 +328,15 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         
         # Process children recursively and update counter
         display_order_counter = process_children(div, div_components, div_id, title_num, nodes, chunks, depth + 1, display_order_counter)
+    
+    # Update parent node's totals if it exists
+    if parent_id:
+        for node in nodes:
+            if node.id == parent_id:
+                # Sum up num_sections and num_words from children
+                node.num_sections = sum(child.num_sections for child in nodes if child.parent == parent_id)
+                node.num_words = sum(child.num_words for child in nodes if child.parent == parent_id)
+                break
     
     return display_order_counter
 
@@ -403,17 +415,84 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
         logger.error(traceback.format_exc())
         return [], []
 
-def process_all_titles(date=None):
+def save_to_json(nodes: List[Node], chunks: List[ContentChunk], title_num: str) -> None:
+    """
+    Save nodes and chunks to JSON files in the json_tables directory.
+    
+    Args:
+        nodes: List of Node objects to save
+        chunks: List of ContentChunk objects to save
+        title_num: The title number these belong to
+    """
+    # Create directories if they don't exist
+    ensure_directory_exists(JSON_TABLES_DIR)
+    title_dir = os.path.join(JSON_TABLES_DIR, f"title_{title_num}")
+    ensure_directory_exists(title_dir)
+    
+    # Convert title_num to int for top_level_title
+    title_num_int = int(title_num)
+    
+    # Process nodes before saving
+    processed_nodes = []
+    for node in nodes:
+        node_dict = asdict(node)
+        
+        # Ensure top_level_title is an integer
+        if node_dict['top_level_title']:
+            node_dict['top_level_title'] = int(node_dict['top_level_title'])
+        
+        # Handle num_sections and num_words based on level_type
+        if node_dict['level_type'] in ["section", "appendix"]:
+            # For sections and appendices, ensure num_sections is 1
+            node_dict['num_sections'] = 1
+            # Calculate total word count from chunks
+            matching_chunks = [c for c in chunks if c.section_id == node_dict['id']]
+            node_dict['num_words'] = sum(len(chunk.content.split()) for chunk in matching_chunks)
+        else:
+            # For all other level types (title, chapter, part, etc.)
+            node_dict['num_sections'] = 0
+            node_dict['num_words'] = 0
+        
+        processed_nodes.append(node_dict)
+    
+    # Save nodes
+    nodes_file = os.path.join(title_dir, "nodes.json")
+    with open(nodes_file, 'w', encoding='utf-8') as f:
+        json.dump(processed_nodes, f, indent=2, ensure_ascii=False)
+    
+    # Save chunks
+    chunks_file = os.path.join(title_dir, "content_chunks.json")
+    with open(chunks_file, 'w', encoding='utf-8') as f:
+        json.dump([asdict(chunk) for chunk in chunks], f, indent=2, ensure_ascii=False)
+    
+    # Save summary
+    summary = {
+        "title": title_num,
+        "node_count": len(nodes),
+        "chunk_count": len(chunks),
+        "last_updated": datetime.now().isoformat()
+    }
+    summary_file = os.path.join(title_dir, "summary.json")
+    with open(summary_file, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+
+def process_all_titles(date=None, use_local_storage=False):
     """
     Process all title XML files for a specific date
     
     Args:
         date: The date of the files to process (default: current date)
+        use_local_storage: Whether to store data locally instead of in database
     """
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
     
     input_dir = os.path.join(RAW_DATA_DIR, date)
+    logger.info(f"Looking for files in: {input_dir}")
+    logger.info(f"Directory exists: {os.path.exists(input_dir)}")
+    if os.path.exists(input_dir):
+        logger.info(f"Files in directory: {os.listdir(input_dir)}")
+    
     if not os.path.exists(input_dir):
         logger.error(f"No data found for date {date}")
         return
@@ -435,14 +514,18 @@ def process_all_titles(date=None):
                     for node in nodes:
                         f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
                 
-                # Insert nodes and chunks into database
+                # Store data either locally or in database
                 try:
-                    insert_nodes(nodes)
-                    if chunks:
-                        insert_content_chunks(chunks)
-                    logger.info(f"Successfully inserted {len(nodes)} nodes and {len(chunks)} chunks from {filename}")
+                    if use_local_storage:
+                        save_to_json(nodes, chunks, title_num)
+                        logger.info(f"Successfully saved {len(nodes)} nodes and {len(chunks)} chunks locally from {filename}")
+                    else:
+                        insert_nodes(nodes)
+                        if chunks:
+                            insert_content_chunks(chunks)
+                        logger.info(f"Successfully inserted {len(nodes)} nodes and {len(chunks)} chunks into database from {filename}")
                 except Exception as e:
-                    logger.error(f"Database error processing {filename}: {str(e)}")
+                    logger.error(f"Storage error processing {filename}: {str(e)}")
                     logger.error(traceback.format_exc())
         except Exception as e:
             logger.error(f"Error processing {filename}: {str(e)}")
@@ -454,6 +537,7 @@ if __name__ == "__main__":
     parser.add_argument('file', nargs='?', help='Single XML file to process. If not provided, processes all files for latest date.')
     parser.add_argument('--date', '-d', help='Date to process files for (YYYY-MM-DD)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--local', '-l', action='store_true', help='Store data locally in JSON format instead of database')
     
     args = parser.parse_args()
     
@@ -484,14 +568,18 @@ if __name__ == "__main__":
                 for node in nodes:
                     f.write(f"{node.id}|{node.node_name}|{node.level_type}|{node.parent or 'None'}\n")
             
-            # Insert nodes and chunks into database
+            # Store data either locally or in database
             try:
-                insert_nodes(nodes)
-                if chunks:
-                    insert_content_chunks(chunks)
-                print(f"Inserted {len(nodes)} nodes and {len(chunks)} chunks from {args.file}")
+                if args.local:
+                    save_to_json(nodes, chunks, title_num)
+                    print(f"Saved {len(nodes)} nodes and {len(chunks)} chunks locally from {args.file}")
+                else:
+                    insert_nodes(nodes)
+                    if chunks:
+                        insert_content_chunks(chunks)
+                    print(f"Inserted {len(nodes)} nodes and {len(chunks)} chunks into database from {args.file}")
             except Exception as e:
-                print(f"Error inserting data from {args.file}: {e}")
+                print(f"Error storing data from {args.file}: {e}")
     else:
         # Process all files for specified date or latest date
-        process_all_titles(args.date)
+        process_all_titles(args.date, args.local)
