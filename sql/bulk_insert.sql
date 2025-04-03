@@ -59,4 +59,89 @@ BEGIN
         (chunk->>'content')::text
     FROM jsonb_array_elements(chunks_json) AS chunk;
 END;
+$$ LANGUAGE plpgsql;
+
+-- Function to bulk insert agencies
+CREATE OR REPLACE FUNCTION bulk_insert_agencies(agencies_json JSONB)
+RETURNS void AS $$
+BEGIN
+    -- Delete existing agencies
+    DELETE FROM agencies;
+    
+    -- Insert new agencies
+    INSERT INTO agencies (
+        id, name, abbreviation, parent_id
+    )
+    SELECT
+        (agency->>'id')::text,
+        (agency->>'name')::text,
+        (agency->>'abbreviation')::text,
+        (agency->>'parent_id')::text
+    FROM jsonb_array_elements(agencies_json) AS agency;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to bulk insert CFR references
+CREATE OR REPLACE FUNCTION bulk_insert_cfr_references(refs_json JSONB)
+RETURNS void AS $$
+BEGIN
+    -- Delete existing references
+    DELETE FROM cfr_references;
+    
+    -- Insert new references
+    INSERT INTO cfr_references (
+        id, source_node, target_node, reference_type, context
+    )
+    SELECT
+        (ref->>'id')::text,
+        (ref->>'source_node')::text,
+        (ref->>'target_node')::text,
+        (ref->>'reference_type')::text,
+        (ref->>'context')::text
+    FROM jsonb_array_elements(refs_json) AS ref;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to bulk insert agency node mappings
+CREATE OR REPLACE FUNCTION bulk_insert_agency_node_mappings(mappings_json JSONB)
+RETURNS void AS $$
+BEGIN
+    -- Delete existing mappings
+    DELETE FROM agency_node_mappings;
+    
+    -- Insert new mappings
+    INSERT INTO agency_node_mappings (
+        id, agency_id, node_id, mapping_type
+    )
+    SELECT
+        (mapping->>'id')::text,
+        (mapping->>'agency_id')::text,
+        (mapping->>'node_id')::text,
+        (mapping->>'mapping_type')::text
+    FROM jsonb_array_elements(mappings_json) AS mapping;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to bulk insert corrections
+CREATE OR REPLACE FUNCTION bulk_insert_corrections(corrections_json JSONB)
+RETURNS void AS $$
+BEGIN
+    -- Delete existing corrections
+    DELETE FROM corrections;
+    
+    -- Insert new corrections
+    INSERT INTO corrections (
+        id, node_id, correction_type, original_text, corrected_text, 
+        correction_date, correction_source
+    )
+    SELECT
+        (correction->>'id')::text,
+        (correction->>'node_id')::text,
+        (correction->>'correction_type')::text,
+        (correction->>'original_text')::text,
+        (correction->>'corrected_text')::text,
+        (correction->>'correction_date')::timestamp,
+        (correction->>'correction_source')::text
+    FROM jsonb_array_elements(corrections_json) AS correction;
+END;
 $$ LANGUAGE plpgsql; 

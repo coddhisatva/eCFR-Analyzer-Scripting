@@ -14,4 +14,23 @@ tree_nav_plan.md
 indexes_for_nodes.md
 strats/
 
+src/localPush/json_tables/config/db_config.sh
+
+# Data files and directories
 src/localPush/json_tables/
+src/localPush/csv_output/
+*.json
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

@@ -4,28 +4,16 @@ RETURNS void AS $$
 DECLARE
     refs_json jsonb;
 BEGIN
-    -- Read references from storage
+    -- Read CFR references from storage
     refs_json := (
-        SELECT content::jsonb 
+        SELECT metadata::jsonb 
         FROM storage.objects 
-        WHERE bucket_id = 'json_tables' 
+        WHERE bucket_id = 'json-tables' 
         AND name = 'cfr_references.json'
     );
     
-    -- Insert CFR references
-    INSERT INTO cfr_references (
-        agency_id, title, subheading, ordinal, node_id
-    )
-    SELECT 
-        (jsonb_array_elements(refs_json)->>'agency_id')::text,
-        (jsonb_array_elements(refs_json)->>'title')::integer,
-        (jsonb_array_elements(refs_json)->>'subheading')::text,
-        (jsonb_array_elements(refs_json)->>'ordinal')::integer,
-        (jsonb_array_elements(refs_json)->>'node_id')::text
-    ON CONFLICT (agency_id, node_id) DO UPDATE SET
-        title = EXCLUDED.title,
-        subheading = EXCLUDED.subheading,
-        ordinal = EXCLUDED.ordinal;
+    -- Call bulk insert function
+    PERFORM bulk_insert_cfr_references(refs_json);
 END;
 $$ LANGUAGE plpgsql;
 

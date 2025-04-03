@@ -6,9 +6,9 @@ DECLARE
 BEGIN
     -- Read chunks from storage
     chunks_json := (
-        SELECT content::jsonb 
+        SELECT metadata::jsonb 
         FROM storage.objects 
-        WHERE bucket_id = 'json_tables' 
+        WHERE bucket_id = 'json-tables' 
         AND name = 'title_' || title_num || '/content_chunks.json'
     );
     
