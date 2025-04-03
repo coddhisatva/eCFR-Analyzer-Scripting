@@ -5,6 +5,7 @@ import psutil
 import sys
 from tqdm import tqdm
 import time
+import re
 
 # Database connection parameters
 DB_PARAMS = {
@@ -84,6 +85,45 @@ def bulk_insert_with_progress(conn, cur, table_name, data, columns, value_templa
         conn.rollback()  # Rollback any uncommitted changes
         return False
 
+def resolve_node_id(cur, node_id):
+    """
+    Resolve a node ID to its full format by checking the database.
+    Handles different subheading types (chapter, subtitle, subchapter) interchangeably.
+    """
+    try:
+        # First try exact match
+        cur.execute("SELECT id FROM nodes WHERE id = %s", (node_id,))
+        if cur.fetchone():
+            return node_id
+            
+        # If no exact match, try different subheading types
+        match = re.match(r'us/federal/ecfr/title=(\d+)/(\w+)=(\w+)', node_id)
+        if not match:
+            return node_id
+            
+        title, subheading_type, value = match.groups()
+        subheading_types = ['chapter', 'subtitle', 'subchapter']
+        
+        for heading_type in subheading_types:
+            if heading_type != subheading_type:
+                test_id = f"us/federal/ecfr/title={title}/{heading_type}={value}"
+                cur.execute("SELECT id FROM nodes WHERE id = %s", (test_id,))
+                result = cur.fetchone()
+                if result:
+                    return result[0]
+        
+        # If still no match, try at title level
+        title_id = f"us/federal/ecfr/title={title}"
+        cur.execute("SELECT id FROM nodes WHERE id = %s", (title_id,))
+        result = cur.fetchone()
+        if result:
+            return result[0]
+            
+    except Exception as e:
+        print(f"Error resolving node ID {node_id}: {e}")
+        
+    return node_id
+
 def main(resume_table=None, resume_batch=0):
     print("Connecting to database...")
     conn = psycopg2.connect(**DB_PARAMS)
@@ -161,6 +201,12 @@ def main(resume_table=None, resume_batch=0):
                 start_batch = 0
                 
             data = load_json_file(filename)
+            if table_name == 'agency_node_mappings':
+                # Resolve node IDs before inserting
+                print("\nResolving node IDs for mappings...")
+                for mapping in tqdm(data, desc="Resolving node IDs"):
+                    mapping['node_id'] = resolve_node_id(cur, mapping['node_id'])
+            
             if bulk_insert_with_progress(
                 conn, cur, table_name,
                 data, columns, value_template,
