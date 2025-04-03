@@ -5,6 +5,7 @@ Script to process agency data into database entities or local JSON storage
 import os
 import json
 import logging
+import sys
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import argparse
@@ -170,6 +171,8 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     
     # Get CFR references for this agency
     cfr_refs = []
+    num_words = 0
+    num_sections = 0
     
     # Only get client if not using local storage
     client = None if use_local_storage else get_supabase_client()
@@ -196,6 +199,16 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
                 continue
         
         cfr_refs.append(node_id)
+        
+        # Get metrics from the node
+        if not use_local_storage:
+            try:
+                node = client.table('nodes').select('num_words, num_sections').eq('id', node_id).execute()
+                if node.data:
+                    num_words += node.data[0].get('num_words', 0)
+                    num_sections += node.data[0].get('num_sections', 0)
+            except Exception as e:
+                logger.warning(f"Error getting metrics for node {node_id}: {e}")
     
     logger.info(f"Found {len(cfr_refs)} CFR references for agency {agency_id}")
     
@@ -217,9 +230,9 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         },
         num_children=len(agency_data.get('children', [])),
         num_cfr=len(cfr_refs),
-        num_words=0,  # Will be calculated later
-        num_sections=0,  # Will be calculated later
-        num_corrections=0,  # Will be calculated later
+        num_words=num_words,
+        num_sections=num_sections,
+        num_corrections=0,  # Will be set from corrections map
         cfr_references=cfr_refs  # Store node IDs
     )
     
@@ -230,11 +243,13 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         child_agencies = process_agency_data(child, agency_id, depth + 1, use_local_storage)
         agencies.extend(child_agencies)
         
-        # Propagate child's CFR references up to parent
+        # Propagate child's CFR references and metrics up to parent
         if child_agencies:
             for child_agency in child_agencies:
                 agency.cfr_references.extend(child_agency.cfr_references)
                 agency.num_cfr = len(agency.cfr_references)  # Update count
+                agency.num_words += child_agency.num_words  # Add child's words
+                agency.num_sections += child_agency.num_sections  # Add child's sections
     
     return agencies
 
@@ -314,7 +329,9 @@ def process_agencies_file(file_path: str, use_local_storage: bool = False):
             for agency in agencies:
                 for node_id in agency.cfr_references:
                     # Create CFR reference
+                    ref_id = abs(hash(f"{agency.id}:{node_id}")) % (2**31)  # Generate deterministic ID
                     cfr_ref = CFRReference(
+                        id=ref_id,
                         agency_id=agency.id,
                         node_id=node_id,
                         title=int(node_id.split('/')[3].split('=')[1])  # Extract title from node_id
@@ -322,7 +339,9 @@ def process_agencies_file(file_path: str, use_local_storage: bool = False):
                     all_cfr_references.append(cfr_ref)
                     
                     # Create agency node mapping
+                    mapping_id = abs(hash(f"mapping:{agency.id}:{node_id}")) % (2**31)  # Generate deterministic ID
                     mapping = AgencyNodeMapping(
+                        id=mapping_id,
                         agency_id=agency.id,
                         node_id=node_id,
                         metadata={
@@ -370,7 +389,7 @@ if __name__ == "__main__":
         input_dir = os.path.join(RAW_DATA_DIR, "agencies", args.date)
         if not os.path.exists(input_dir):
             logger.error(f"No data found for date {args.date}")
-            return
+            sys.exit(1)
         
         for filename in os.listdir(input_dir):
             if not filename.endswith(".json") or not filename.startswith("agencies-"):
