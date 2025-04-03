@@ -174,8 +174,7 @@ def main():
                 c.get('error_occurred'), c.get('correction_duration'),
                 c.get('fr_citation'), c.get('position'), c.get('year'),
                 json.dumps(c['metadata']) if c.get('metadata') else None
-            ),
-            on_conflict="ON CONFLICT (node_id, agency_id, title) DO NOTHING"
+            )
         ):
             tables_loaded.append('corrections')
         else:
