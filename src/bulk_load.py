@@ -160,6 +160,26 @@ def main():
             tables_loaded.append('cfr_references')
         else:
             tables_failed.append('cfr_references')
+
+        # 6. Load corrections
+        corrections = load_json_file('all_corrections.json')
+        if bulk_insert_with_progress(
+            conn, cur, 'corrections',
+            corrections,
+            ['node_id', 'agency_id', 'title', 'corrective_action', 'error_corrected',
+             'error_occurred', 'correction_duration', 'fr_citation', 'position', 'year', 'metadata'],
+            lambda c: (
+                c['node_id'], c.get('agency_id'), c['title'],
+                c.get('corrective_action'), c.get('error_corrected'),
+                c.get('error_occurred'), c.get('correction_duration'),
+                c.get('fr_citation'), c.get('position'), c.get('year'),
+                json.dumps(c['metadata']) if c.get('metadata') else None
+            ),
+            on_conflict="ON CONFLICT (node_id, agency_id, title) DO NOTHING"
+        ):
+            tables_loaded.append('corrections')
+        else:
+            tables_failed.append('corrections')
         
         print("\n=== LOAD SUMMARY ===")
         if tables_loaded:
