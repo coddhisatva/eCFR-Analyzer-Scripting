@@ -18,10 +18,12 @@ class Correction:
         corrective_action: Description of the correction
         error_corrected: Date the correction was made
         error_occurred: Date the error occurred
+        agency_id: Reference to the agency responsible for the correction
         correction_duration: Number of days between error and correction
         fr_citation: Federal Register citation
         position: Position in the document
         year: Year of the correction
+        metadata: Additional metadata about the correction
     """
     id: int
     node_id: str
@@ -29,7 +31,9 @@ class Correction:
     corrective_action: str
     error_corrected: date
     error_occurred: date
+    agency_id: Optional[str] = None
     correction_duration: Optional[int] = None
     fr_citation: Optional[str] = None
     position: Optional[int] = None
-    year: Optional[int] = None 
+    year: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None 

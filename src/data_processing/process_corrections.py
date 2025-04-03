@@ -5,9 +5,10 @@ Script to process corrections data into database entities or local JSON storage
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 import argparse
+from dataclasses import asdict
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +22,13 @@ from src.database.connector import insert_corrections, get_supabase_client
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw", "corrections")
 PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed", "corrections")
 JSON_TABLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src", "localPush", "json_tables")
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 def ensure_directory_exists(directory):
     """Create directory if it doesn't exist."""
@@ -92,8 +100,7 @@ def build_node_id(hierarchy: Dict[str, str]) -> str:
 def find_matching_node_id(client, hierarchy: Dict[str, str]) -> Optional[str]:
     """
     Find a matching node ID when exact match fails.
-    Since chapters are unique within a title, we can reliably find the correct node
-    by matching both title and chapter number.
+    Falls back to higher level nodes if exact match isn't found.
     
     Args:
         client: Supabase client
@@ -103,10 +110,9 @@ def find_matching_node_id(client, hierarchy: Dict[str, str]) -> Optional[str]:
         Matching node ID if found, None otherwise
     """
     try:
-        # Get title and chapter
+        # Get title - this is the minimum we need
         title = hierarchy.get('title')
-        chapter = hierarchy.get('chapter')
-        if not title or not chapter:
+        if not title:
             return None
             
         # First try exact match with the full node_id
@@ -115,12 +121,49 @@ def find_matching_node_id(client, hierarchy: Dict[str, str]) -> Optional[str]:
         if exact_match.data:
             return exact_match.data[0]['id']
             
-        # If no exact match, search for any node with this title and chapter
-        # Since chapters are unique within a title, this will find the correct node
-        result = client.table('nodes').select('id').ilike('id', f"%/title={title}%/chapter={chapter}%").execute()
-        if result.data:
-            # Since chapters are unique within a title, we can take the first match
-            return result.data[0]['id']
+        # If no exact match, try matching at each level, starting from most specific
+        # Build parts of the path we have
+        path_parts = []
+        path_parts.append(f"title={title}")
+        
+        if hierarchy.get('chapter'):
+            path_parts.append(f"chapter={hierarchy['chapter']}")
+            
+        if hierarchy.get('subchapter'):
+            path_parts.append(f"subchap={hierarchy['subchapter']}")
+            
+        if hierarchy.get('part'):
+            path_parts.append(f"part={hierarchy['part']}")
+        elif hierarchy.get('section'):
+            # If we have a section but no part, try to infer the part number
+            section = hierarchy['section'].strip().strip('-').strip()
+            if '.' in section:
+                part = section.split('.')[0]
+                path_parts.append(f"part={part}")
+                
+        if hierarchy.get('subpart'):
+            path_parts.append(f"subpart={hierarchy['subpart']}")
+            
+        if hierarchy.get('section'):
+            section = hierarchy['section'].strip().strip('-').strip()
+            path_parts.append(f"section={section}")
+        
+        # Try matching at each level, from most specific to least
+        while path_parts:
+            # Build the path to try
+            path = "us/federal/ecfr/" + "/".join(path_parts)
+            match = client.table('nodes').select('id').eq('id', path).execute()
+            if match.data:
+                return match.data[0]['id']
+            # Remove the last part and try again
+            path_parts.pop()
+        
+        # If we get here, we couldn't find any match
+        # Fall back to title level
+        title_path = f"us/federal/ecfr/title={title}"
+        title_match = client.table('nodes').select('id').eq('id', title_path).execute()
+        if title_match.data:
+            return title_match.data[0]['id']
             
     except Exception as e:
         logger.warning(f"Error finding matching node: {e}")
@@ -130,7 +173,7 @@ def find_matching_node_id(client, hierarchy: Dict[str, str]) -> Optional[str]:
 def find_matching_node_id_local(hierarchy: Dict[str, str], nodes: List[Dict]) -> Optional[str]:
     """
     Find a matching node ID using local nodes data.
-    Searches through all title folders for matching nodes.
+    If exact match isn't found, falls back to higher level nodes.
     
     Args:
         hierarchy: Dictionary containing title, chapter, etc.
@@ -139,10 +182,9 @@ def find_matching_node_id_local(hierarchy: Dict[str, str], nodes: List[Dict]) ->
     Returns:
         Matching node ID if found, None otherwise
     """
-    # Get title and chapter
+    # Get title - this is the minimum we need
     title = hierarchy.get('title')
-    chapter = hierarchy.get('chapter')
-    if not title or not chapter:
+    if not title:
         return None
         
     # First try exact match with the full node_id
@@ -150,13 +192,51 @@ def find_matching_node_id_local(hierarchy: Dict[str, str], nodes: List[Dict]) ->
     exact_match = next((n for n in nodes if n['id'] == node_id), None)
     if exact_match:
         return exact_match['id']
+    
+    # If no exact match, try matching at each level, starting from most specific
+    # Build parts of the path we have
+    path_parts = []
+    path_parts.append(f"title={title}")
+    
+    if hierarchy.get('chapter'):
+        path_parts.append(f"chapter={hierarchy['chapter']}")
         
-    # If no exact match, search for any node with this title and chapter
-    # Since chapters are unique within a title, this will find the correct node
-    for node in nodes:
-        if f"/title={title}/" in node['id'] and f"/chapter={chapter}/" in node['id']:
-            return node['id']
+    if hierarchy.get('subchapter'):
+        path_parts.append(f"subchap={hierarchy['subchapter']}")
+        
+    if hierarchy.get('part'):
+        path_parts.append(f"part={hierarchy['part']}")
+    elif hierarchy.get('section'):
+        # If we have a section but no part, try to infer the part number
+        section = hierarchy['section'].strip().strip('-').strip()
+        if '.' in section:
+            part = section.split('.')[0]
+            path_parts.append(f"part={part}")
             
+    if hierarchy.get('subpart'):
+        path_parts.append(f"subpart={hierarchy['subpart']}")
+        
+    if hierarchy.get('section'):
+        section = hierarchy['section'].strip().strip('-').strip()
+        path_parts.append(f"section={section}")
+    
+    # Try matching at each level, from most specific to least
+    while path_parts:
+        # Build the path to try
+        path = "us/federal/ecfr/" + "/".join(path_parts)
+        match = next((n for n in nodes if n['id'] == path), None)
+        if match:
+            return match['id']
+        # Remove the last part and try again
+        path_parts.pop()
+    
+    # If we get here, we couldn't find any match
+    # Fall back to title level
+    title_path = f"us/federal/ecfr/title={title}"
+    title_match = next((n for n in nodes if n['id'] == title_path), None)
+    if title_match:
+        return title_match['id']
+    
     return None
 
 def process_correction_data(correction_data: Dict[str, Any], nodes: Optional[List[Dict]] = None, client = None) -> List[Correction]:
@@ -287,7 +367,7 @@ def save_corrections_to_json(corrections: List[Correction], maps: Dict, title_nu
     # Save corrections
     corrections_file = os.path.join(title_dir, "corrections.json")
     with open(corrections_file, 'w', encoding='utf-8') as f:
-        json.dump([asdict(c) for c in corrections], f, indent=2, ensure_ascii=False)
+        json.dump([asdict(c) for c in corrections], f, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
     
     # Save correction maps
     maps_file = os.path.join(title_dir, "correction_maps.json")
@@ -351,22 +431,71 @@ def process_corrections_file(file_path: str, use_local_storage: bool = False):
             
             logger.info(f"Loaded {len(all_nodes)} nodes and {len(all_agencies)} agencies from all title folders")
             
-            # Process corrections using all nodes
+            # First pass: Process all corrections and build initial maps
+            node_corrections = {}  # node_id -> count
+            agency_corrections = {}  # agency_id -> count
+            
             for correction_data in data.get('ecfr_corrections', []):
                 corrections = process_correction_data(correction_data, nodes=all_nodes)
                 all_corrections.extend(corrections)
-            
-            if all_corrections:
-                # Build correction maps and propagate counts
-                maps = build_corrections_maps(all_corrections, all_nodes, all_agencies)
                 
-                # Save to JSON in the appropriate title folder
-                title_num = data.get('ecfr_corrections', [{}])[0].get('title')
-                if title_num:
-                    save_corrections_to_json(all_corrections, maps, title_num)
-                    logger.info(f"Saved {len(all_corrections)} corrections locally")
-                else:
-                    logger.error("Could not determine title number from corrections data")
+                # Build initial correction maps
+                for correction in corrections:
+                    if correction.node_id:
+                        node_corrections[correction.node_id] = node_corrections.get(correction.node_id, 0) + 1
+                    if correction.agency_id:
+                        agency_corrections[correction.agency_id] = agency_corrections.get(correction.agency_id, 0) + 1
+            
+            # Second pass: Propagate node corrections up the tree
+            for node in all_nodes:
+                if node['parent'] and node['id'] in node_corrections:
+                    current_id = node['parent']
+                    while current_id:
+                        node_corrections[current_id] = node_corrections.get(current_id, 0) + node_corrections[node['id']]
+                        # Find parent node
+                        parent_node = next((n for n in all_nodes if n['id'] == current_id), None)
+                        current_id = parent_node['parent'] if parent_node else None
+            
+            # Third pass: Propagate agency corrections up the hierarchy
+            for agency in all_agencies:
+                if agency['parent_id'] and agency['id'] in agency_corrections:
+                    current_id = agency['parent_id']
+                    while current_id:
+                        agency_corrections[current_id] = agency_corrections.get(current_id, 0) + agency_corrections[agency['id']]
+                        # Find parent agency
+                        parent_agency = next((a for a in all_agencies if a['id'] == current_id), None)
+                        current_id = parent_agency['parent_id'] if parent_agency else None
+            
+            # Fourth pass: Update node and agency objects with correction counts
+            for node in all_nodes:
+                node['num_corrections'] = node_corrections.get(node['id'], 0)
+            
+            for agency in all_agencies:
+                agency['num_corrections'] = agency_corrections.get(agency['id'], 0)
+            
+            # Save everything back to JSON
+            title_num = data.get('ecfr_corrections', [{}])[0].get('title')
+            if title_num:
+                # Save corrections
+                save_corrections_to_json(all_corrections, {
+                    'node_corrections': node_corrections,
+                    'agency_corrections': agency_corrections
+                }, title_num)
+                
+                # Save updated nodes
+                title_dir = os.path.join(JSON_TABLES_DIR, f"title_{title_num}")
+                nodes_file = os.path.join(title_dir, "nodes.json")
+                with open(nodes_file, 'w', encoding='utf-8') as f:
+                    json.dump(all_nodes, f, indent=2, ensure_ascii=False)
+                
+                # Save updated agencies
+                agencies_file = os.path.join(title_dir, "agencies.json")
+                with open(agencies_file, 'w', encoding='utf-8') as f:
+                    json.dump(all_agencies, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"Saved {len(all_corrections)} corrections and updated {len(all_nodes)} nodes and {len(all_agencies)} agencies")
+            else:
+                logger.error("Could not determine title number from corrections data")
         else:
             # Get Supabase client for database processing
             client = get_supabase_client()

@@ -1,0 +1,97 @@
+[
+  {
+    "id": 386933343,
+    "node_id": "us/federal/ecfr/title=2",
+    "title": 2,
+    "corrective_action": "Appendix A added",
+    "error_corrected": "2013-02-22T00:00:00",
+    "error_occurred": "2012-04-27T00:00:00",
+    "agency_id": null,
+    "correction_duration": 301,
+    "fr_citation": "77 FR 18673",
+    "position": "1",
+    "year": 2013,
+    "metadata": {
+      "cfr_reference": "2 CFR Part 3485",
+      "last_modified": "2021-09-09",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:30:29.589879"
+    }
+  },
+  {
+    "id": 386933343,
+    "node_id": "us/federal/ecfr/title=2",
+    "title": 2,
+    "corrective_action": "Authority citation added",
+    "error_corrected": "2014-12-26T00:00:00",
+    "error_occurred": "2014-12-24T00:00:00",
+    "agency_id": null,
+    "correction_duration": 2,
+    "fr_citation": "79 FR 77766",
+    "position": "1",
+    "year": 2014,
+    "metadata": {
+      "cfr_reference": "2 CFR Part 267",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:30:29.638601"
+    }
+  },
+  {
+    "id": 386933343,
+    "node_id": "us/federal/ecfr/title=2",
+    "title": 2,
+    "corrective_action": "Added",
+    "error_corrected": "2014-12-31T00:00:00",
+    "error_occurred": "2014-12-19T00:00:00",
+    "agency_id": null,
+    "correction_duration": 12,
+    "fr_citation": "79 FR 76091",
+    "position": "2",
+    "year": 2014,
+    "metadata": {
+      "cfr_reference": "2 CFR Part 3474",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:30:29.705575"
+    }
+  },
+  {
+    "id": 386933343,
+    "node_id": "us/federal/ecfr/title=2",
+    "title": 2,
+    "corrective_action": "Added",
+    "error_corrected": "2015-03-10T00:00:00",
+    "error_occurred": "2014-12-19T00:00:00",
+    "agency_id": null,
+    "correction_duration": 81,
+    "fr_citation": "79 FR 76024",
+    "position": "1",
+    "year": 2015,
+    "metadata": {
+      "cfr_reference": "2 CFR 910.518-910.521",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:30:29.771910"
+    }
+  },
+  {
+    "id": 386933343,
+    "node_id": "us/federal/ecfr/title=2",
+    "title": 2,
+    "corrective_action": "(b), (c) revised",
+    "error_corrected": "2021-04-28T00:00:00",
+    "error_occurred": "2020-11-12T00:00:00",
+    "agency_id": null,
+    "correction_duration": 167,
+    "fr_citation": "85 FR 49567",
+    "position": "1",
+    "year": 2021,
+    "metadata": {
+      "cfr_reference": "2 CFR 200.434",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:30:29.882248"
+    }
+  }
+]

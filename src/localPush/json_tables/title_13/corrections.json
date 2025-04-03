@@ -1,0 +1,211 @@
+[
+  {
+    "id": 1588293740,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=121/subpart=A",
+    "title": 13,
+    "corrective_action": "Table amended",
+    "error_corrected": "2007-10-29T00:00:00",
+    "error_occurred": "2007-10-01T00:00:00",
+    "agency_id": null,
+    "correction_duration": 28,
+    "fr_citation": "72 FR 49645",
+    "position": "1",
+    "year": 2007,
+    "metadata": {
+      "cfr_reference": "13 CFR 121.201",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.099518"
+    }
+  },
+  {
+    "id": 1588293740,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=121/subpart=A",
+    "title": 13,
+    "corrective_action": "Table amended",
+    "error_corrected": "2009-12-22T00:00:00",
+    "error_occurred": "2007-10-01T00:00:00",
+    "agency_id": null,
+    "correction_duration": 813,
+    "fr_citation": "72 FR 49645",
+    "position": "1",
+    "year": 2009,
+    "metadata": {
+      "cfr_reference": "13 CFR 121.201",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.153065"
+    }
+  },
+  {
+    "id": 357886153,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=120/subpart=H",
+    "title": 13,
+    "corrective_action": "Corrected",
+    "error_corrected": "2014-07-22T00:00:00",
+    "error_occurred": "2014-04-22T00:00:00",
+    "agency_id": null,
+    "correction_duration": 91,
+    "fr_citation": "79 FR 15649",
+    "position": "1",
+    "year": 2014,
+    "metadata": {
+      "cfr_reference": "13 CFR 120.823",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.203605"
+    }
+  },
+  {
+    "id": 731883261,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=120/subpart=A",
+    "title": 13,
+    "corrective_action": "(a) revised",
+    "error_corrected": "2017-10-25T00:00:00",
+    "error_occurred": "2017-09-20T00:00:00",
+    "agency_id": null,
+    "correction_duration": 35,
+    "fr_citation": "82 FR 39502",
+    "position": "1",
+    "year": 2017,
+    "metadata": {
+      "cfr_reference": "13 CFR 120.160",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.254376"
+    }
+  },
+  {
+    "id": 357886153,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=120/subpart=H",
+    "title": 13,
+    "corrective_action": "(c) corected",
+    "error_corrected": "2017-10-25T00:00:00",
+    "error_occurred": "2017-09-20T00:00:00",
+    "agency_id": null,
+    "correction_duration": 35,
+    "fr_citation": "82 FR 39504",
+    "position": "2",
+    "year": 2017,
+    "metadata": {
+      "cfr_reference": "13 CFR 120.812",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.304579"
+    }
+  },
+  {
+    "id": 2035679614,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=126/subpart=A/section=126.103",
+    "title": 13,
+    "corrective_action": "Amended",
+    "error_corrected": "2020-01-09T00:00:00",
+    "error_occurred": "2020-01-01T00:00:00",
+    "agency_id": null,
+    "correction_duration": 8,
+    "fr_citation": "84 FR 62499",
+    "position": "1",
+    "year": 2020,
+    "metadata": {
+      "cfr_reference": "13 CFR 126.103",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.317551"
+    }
+  },
+  {
+    "id": 405401762,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=125/section=125.9",
+    "title": 13,
+    "corrective_action": "(g)(1) introductory text reinstated",
+    "error_corrected": "2021-04-06T00:00:00",
+    "error_occurred": "2020-11-16T00:00:00",
+    "agency_id": null,
+    "correction_duration": 141,
+    "fr_citation": "85 FR 66194",
+    "position": "1",
+    "year": 2021,
+    "metadata": {
+      "cfr_reference": "13 CFR 125.9",
+      "last_modified": "2021-12-22",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.330737"
+    }
+  },
+  {
+    "id": 1281258070,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=120/subpart=B",
+    "title": 13,
+    "corrective_action": "Restored second sentence",
+    "error_corrected": "2023-05-15T00:00:00",
+    "error_occurred": "2023-05-12T00:00:00",
+    "agency_id": null,
+    "correction_duration": 3,
+    "fr_citation": "88 FR 21899",
+    "position": "1",
+    "year": 2023,
+    "metadata": {
+      "cfr_reference": "13 CFR 120.220",
+      "last_modified": "2023-05-16",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.380606"
+    }
+  },
+  {
+    "id": 886754956,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=126/subpart=H/section=126.801",
+    "title": 13,
+    "corrective_action": "Correctly revised paragraph (b)",
+    "error_corrected": "2023-06-05T00:00:00",
+    "error_occurred": "2023-05-30T00:00:00",
+    "agency_id": null,
+    "correction_duration": 6,
+    "fr_citation": "88 FR 26213",
+    "position": "2",
+    "year": 2023,
+    "metadata": {
+      "cfr_reference": "13 CFR 126.801",
+      "last_modified": "2023-06-05",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.394032"
+    }
+  },
+  {
+    "id": 260455097,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=107/subpart=E",
+    "title": 13,
+    "corrective_action": "(c)(4) correctly amended",
+    "error_corrected": "2024-03-06T00:00:00",
+    "error_occurred": "2024-03-04T00:00:00",
+    "agency_id": null,
+    "correction_duration": 2,
+    "fr_citation": "89 FR 3548",
+    "position": "1",
+    "year": 2024,
+    "metadata": {
+      "cfr_reference": "13 CFR 107.585",
+      "last_modified": "2024-03-06",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.444065"
+    }
+  },
+  {
+    "id": 357886153,
+    "node_id": "us/federal/ecfr/title=13/chapter=I/part=120/subpart=H",
+    "title": 13,
+    "corrective_action": "Reinstated (g)(11)",
+    "error_corrected": "2024-11-19T00:00:00",
+    "error_occurred": "2024-11-15T00:00:00",
+    "agency_id": null,
+    "correction_duration": 4,
+    "fr_citation": "89 FR 79740",
+    "position": "2",
+    "year": 2024,
+    "metadata": {
+      "cfr_reference": "13 CFR 120.882",
+      "last_modified": "2024-11-19",
+      "display_in_toc": false,
+      "last_updated": "2025-04-02T22:29:37.493926"
+    }
+  }
+]
