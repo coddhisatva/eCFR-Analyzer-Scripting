@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Script to process agency data into database entities
+Script to process agency data into database entities or local JSON storage
 """
 import os
 import json
@@ -8,9 +8,13 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import argparse
+from dataclasses import asdict
 
 # Set up basic logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Import models
@@ -22,6 +26,7 @@ from src.database.connector import insert_agencies, insert_cfr_references, inser
 # Directory for raw and processed data
 RAW_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "raw")
 PROCESSED_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "processed")
+JSON_TABLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src", "localPush", "json_tables")
 
 def ensure_directory_exists(directory):
     """Create directory if it doesn't exist."""
@@ -95,7 +100,49 @@ def determine_agency_type(agency_data: Dict[str, Any], is_root: bool) -> str:
     else:
         return 'zed'
 
-def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = None, depth: int = 0) -> List[Agency]:
+def find_matching_node_id(client, title: str, subheading: str) -> Optional[str]:
+    """
+    Find a matching node ID for a given title and subheading.
+    Handles different subheading types (chapter, subtitle, subchapter) interchangeably.
+    
+    Args:
+        client: Supabase client
+        title: Title number
+        subheading: Subheading identifier (e.g., "chapter=A" or "subtitle=A")
+        
+    Returns:
+        Matching node ID if found, None otherwise
+    """
+    try:
+        # First try exact match
+        node_id = f"us/federal/ecfr/title={title}/{subheading}"
+        exact_match = client.table('nodes').select('id').eq('id', node_id).execute()
+        if exact_match.data:
+            return exact_match.data[0]['id']
+            
+        # If no exact match, try different subheading types
+        subheading_types = ['chapter', 'subtitle', 'subchapter']
+        subheading_value = subheading.split('=')[1]  # Get the value (e.g., "A")
+        
+        for heading_type in subheading_types:
+            if heading_type not in subheading:  # Skip if it's the same type we already tried
+                test_id = f"us/federal/ecfr/title={title}/{heading_type}={subheading_value}"
+                match = client.table('nodes').select('id').eq('id', test_id).execute()
+                if match.data:
+                    return match.data[0]['id']
+        
+        # If still no match, try at title level
+        title_id = f"us/federal/ecfr/title={title}"
+        title_match = client.table('nodes').select('id').eq('id', title_id).execute()
+        if title_match.data:
+            return title_match.data[0]['id']
+            
+    except Exception as e:
+        logger.warning(f"Error finding matching node: {e}")
+        
+    return None
+
+def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = None, depth: int = 0, use_local_storage: bool = False) -> List[Agency]:
     """
     Process agency data recursively to create Agency entities
     
@@ -103,6 +150,7 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         agency_data: Dictionary containing agency data
         parent_id: ID of parent agency (if any)
         depth: Current depth in the hierarchy
+        use_local_storage: Whether to use local storage instead of database
         
     Returns:
         List of Agency entities
@@ -110,17 +158,21 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     agencies = []
     
     # Extract basic agency information
-    agency_id = agency_data.get('slug')  # Changed from 'id' to 'slug'
+    agency_id = agency_data.get('slug')
     if not agency_id:
         logger.warning(f"Skipping agency without slug: {agency_data.get('name', 'Unknown')}")
         return []
+    
+    logger.info(f"Processing agency: {agency_id} at depth {depth}")
     
     # Determine if this is a root agency
     is_root = parent_id is None
     
     # Get CFR references for this agency
     cfr_refs = []
-    client = get_supabase_client()
+    
+    # Only get client if not using local storage
+    client = None if use_local_storage else get_supabase_client()
     
     for ref in agency_data.get('cfr_references', []):
         # Get title number
@@ -133,13 +185,19 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
         if not subheading:
             continue
             
-        # Try to find the correct node_id
-        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
-        if not node_id:
-            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
-            continue
-            
+        if use_local_storage:
+            # In local mode, just build the node ID directly
+            node_id = build_node_id(title, subheading)
+        else:
+            # In database mode, try to find the matching node
+            node_id = find_matching_node_id(client, title, f"chapter={subheading}")
+            if not node_id:
+                logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
+                continue
+        
         cfr_refs.append(node_id)
+    
+    logger.info(f"Found {len(cfr_refs)} CFR references for agency {agency_id}")
     
     # Create agency entity with metrics
     agency = Agency(
@@ -169,7 +227,7 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     
     # Process children recursively with incremented depth
     for child in agency_data.get('children', []):
-        child_agencies = process_agency_data(child, agency_id, depth + 1)
+        child_agencies = process_agency_data(child, agency_id, depth + 1, use_local_storage)
         agencies.extend(child_agencies)
         
         # Propagate child's CFR references up to parent
@@ -180,261 +238,143 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     
     return agencies
 
-def process_cfr_references(agency_id: str, references_data: List[Dict[str, Any]]) -> List[CFRReference]:
+def save_to_json(agencies: List[Agency], cfr_references: List[CFRReference], agency_node_mappings: List[AgencyNodeMapping]) -> None:
     """
-    Process CFR references for an agency
+    Save processed data to JSON files
     
     Args:
-        agency_id: ID of the agency
-        references_data: List of reference data dictionaries
-        
-    Returns:
-        List of CFRReference entities
+        agencies: List of Agency entities
+        cfr_references: List of CFRReference entities
+        agency_node_mappings: List of AgencyNodeMapping entities
     """
-    references = []
-    client = get_supabase_client()
+    logger.info("Saving data to JSON files...")
     
-    for i, ref_data in enumerate(references_data):
-        # Get title number
-        title = ref_data.get('title')
-        if not title:
-            continue
-            
-        # Build node_id from title and subheading
-        subheading = ref_data.get('chapter') or ref_data.get('subchapter') or ref_data.get('subtitle') or ref_data.get('part')
-        if not subheading:
-            continue
-            
-        # Get subchapter if present
-        subchapter = ref_data.get('subchapter')
-            
-        # Try to find the correct node_id
-        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
-        if not node_id:
-            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
-            continue
-        
-        # Generate a unique ID using a hash of the agency_id and node_id
-        # This ensures uniqueness while being deterministic
-        unique_id = abs(hash(f"{agency_id}:{node_id}:{i}")) % (2**31)  # Ensure positive 32-bit integer
-        
-        reference = CFRReference(
-            id=unique_id,
-            agency_id=agency_id,
-            title=title,
-            subheading=clean_text(subheading),
-            ordinal=i,
-            node_id=node_id
-        )
-        references.append(reference)
+    # Create directories if they don't exist
+    ensure_directory_exists(JSON_TABLES_DIR)
     
-    return references
+    # Save agencies
+    agencies_file = os.path.join(JSON_TABLES_DIR, "agencies.json")
+    with open(agencies_file, 'w', encoding='utf-8') as f:
+        json.dump([asdict(a) for a in agencies], f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved {len(agencies)} agencies to {agencies_file}")
+    
+    # Save CFR references
+    cfr_file = os.path.join(JSON_TABLES_DIR, "cfr_references.json")
+    with open(cfr_file, 'w', encoding='utf-8') as f:
+        json.dump([asdict(r) for r in cfr_references], f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved {len(cfr_references)} CFR references to {cfr_file}")
+    
+    # Save agency node mappings
+    mappings_file = os.path.join(JSON_TABLES_DIR, "agency_node_mappings.json")
+    with open(mappings_file, 'w', encoding='utf-8') as f:
+        json.dump([asdict(m) for m in agency_node_mappings], f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved {len(agency_node_mappings)} agency node mappings to {mappings_file}")
+    
+    # Save summary
+    summary = {
+        "total_agencies": len(agencies),
+        "total_cfr_references": len(cfr_references),
+        "total_mappings": len(agency_node_mappings),
+        "last_updated": datetime.now().isoformat()
+    }
+    summary_file = os.path.join(JSON_TABLES_DIR, "agencies_summary.json")
+    with open(summary_file, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved summary to {summary_file}")
 
-def process_agency_node_mappings(agency_id: str, references_data: List[Dict[str, Any]]) -> List[AgencyNodeMapping]:
+def process_agencies_file(file_path: str, use_local_storage: bool = False):
     """
-    Process agency-node mappings from CFR references
+    Process a single agencies data file
     
     Args:
-        agency_id: ID of the agency
-        references_data: List of reference data dictionaries
-        
-    Returns:
-        List of AgencyNodeMapping entities
+        file_path: Path to the agencies data file
+        use_local_storage: Whether to store data locally instead of in database
     """
-    mappings = []
-    seen_nodes = set()
-    client = get_supabase_client()
-    
-    for i, ref_data in enumerate(references_data):
-        # Get title number
-        title = ref_data.get('title')
-        if not title:
-            continue
-            
-        # Build node_id from title and subheading
-        subheading = ref_data.get('chapter') or ref_data.get('subchapter') or ref_data.get('subtitle') or ref_data.get('part')
-        if not subheading:
-            continue
-            
-        # Try to find the correct node_id
-        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
-        if not node_id:
-            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
-            continue
-        
-        # Skip if we've already seen this node
-        if node_id in seen_nodes:
-            continue
-        seen_nodes.add(node_id)
-        
-        # Generate a unique ID using a hash of the agency_id and node_id
-        # This ensures uniqueness while being deterministic
-        unique_id = abs(hash(f"mapping:{agency_id}:{node_id}")) % (2**31)  # Ensure positive 32-bit integer
-        
-        mapping = AgencyNodeMapping(
-            id=unique_id,
-            agency_id=agency_id,
-            node_id=node_id,
-            is_primary=True,  # These are direct references
-            is_direct_reference=True,
-            relationship_type='regulatory',  # Default to regulatory relationship
-            num_cfr_refs=1  # Each mapping represents one reference
-        )
-        mappings.append(mapping)
-    
-    return mappings
-
-def process_agency_file(file_path: str):
-    """
-    Process a single agency data file
-    
-    Args:
-        file_path: Path to the agency data file
-    """
-    logger.info(f"Processing agency file: {file_path}")
+    logger.info(f"Processing agencies file: {file_path}")
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Get the agencies array from the data
         agencies_data = data.get('agencies', [])
         if not agencies_data:
             logger.error(f"No agencies found in {file_path}")
             return
         
         # Process agencies
-        agencies = []
+        all_agencies = []
+        all_cfr_references = []
+        all_agency_node_mappings = []
+        
         for agency_data in agencies_data:
-            agency_list = process_agency_data(agency_data)
-            agencies.extend(agency_list)
-        
-        if agencies:
-            insert_agencies(agencies)
-            logger.info(f"Inserted {len(agencies)} agencies")
-        
-        # Get CFR references for each agency
-        all_references = []
-        all_mappings = []
-        for agency in agencies:
-            # Find the original agency data
-            agency_data = next((a for a in agencies_data if a.get('slug') == agency.id), None)
-            if not agency_data:
-                continue
-                
-            # Process CFR references
-            references = process_cfr_references(agency.id, agency_data.get('cfr_references', []))
-            if references:
-                all_references.extend(references)
+            agencies = process_agency_data(agency_data, use_local_storage=use_local_storage)
+            all_agencies.extend(agencies)
             
-            # Process agency-node mappings from the same references
-            mappings = process_agency_node_mappings(agency.id, agency_data.get('cfr_references', []))
-            if mappings:
-                all_mappings.extend(mappings)
+            # Create CFR references and mappings
+            for agency in agencies:
+                for node_id in agency.cfr_references:
+                    # Create CFR reference
+                    cfr_ref = CFRReference(
+                        agency_id=agency.id,
+                        node_id=node_id,
+                        title=int(node_id.split('/')[3].split('=')[1])  # Extract title from node_id
+                    )
+                    all_cfr_references.append(cfr_ref)
+                    
+                    # Create agency node mapping
+                    mapping = AgencyNodeMapping(
+                        agency_id=agency.id,
+                        node_id=node_id,
+                        metadata={
+                            'last_updated': datetime.now().isoformat()
+                        }
+                    )
+                    all_agency_node_mappings.append(mapping)
         
-        # Delete existing references and mappings for these agencies
-        client = get_supabase_client()
-        agency_ids = [agency.id for agency in agencies]
-        for agency_id in agency_ids:
-            try:
-                client.table('cfr_references').delete().eq('agency_id', agency_id).execute()
-                client.table('agency_node_mappings').delete().eq('agency_id', agency_id).execute()
-            except Exception as e:
-                logger.warning(f"Error deleting existing references for agency {agency_id}: {e}")
-        
-        # Insert new references and mappings
-        if all_references:
-            insert_cfr_references(all_references)
-            logger.info(f"Inserted {len(all_references)} CFR references")
-        
-        if all_mappings:
-            insert_agency_node_mappings(all_mappings)
-            logger.info(f"Inserted {len(all_mappings)} agency-node mappings")
+        if use_local_storage:
+            save_to_json(all_agencies, all_cfr_references, all_agency_node_mappings)
+        else:
+            # Insert into database
+            insert_agencies(all_agencies)
+            insert_cfr_references(all_cfr_references)
+            insert_agency_node_mappings(all_agency_node_mappings)
+            logger.info(f"Inserted {len(all_agencies)} agencies, {len(all_cfr_references)} CFR references, and {len(all_agency_node_mappings)} mappings into database")
         
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}")
         raise
 
-def process_all_agencies(date=None):
-    """
-    Process all agency data files for a specific date
-    
-    Args:
-        date: The date of the files to process (default: current date)
-    """
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
-    
-    input_dir = os.path.join(RAW_DATA_DIR, date)
-    if not os.path.exists(input_dir):
-        logger.error(f"No data found for date {date}")
-        return
-    
-    for filename in os.listdir(input_dir):
-        if not filename.endswith(".json") or not filename.startswith("agency-"):
-            continue
-        
-        file_path = os.path.join(input_dir, filename)
-        process_agency_file(file_path)
-
-def find_matching_node_id(client, title: int, subheading: str) -> Optional[str]:
-    """
-    Find a matching node ID when exact match fails.
-    Since chapters are unique within a title, we can reliably find the correct node
-    by matching both title and chapter number.
-    
-    Args:
-        client: Supabase client
-        title: CFR title number
-        subheading: CFR subheading (chapter/subchapter/etc)
-        
-    Returns:
-        Matching node ID if found, None otherwise
-    """
-    try:
-        # First try exact match
-        exact_match = client.table('nodes').select('id').eq('id', f"us/federal/ecfr/title={title}/{subheading}").execute()
-        if exact_match.data:
-            return exact_match.data[0]['id']
-            
-        # If no exact match, extract the chapter number if this is a chapter reference
-        subheading_parts = subheading.split('=')
-        if len(subheading_parts) != 2:
-            return None
-            
-        subheading_type, subheading_value = subheading_parts
-        
-        # If this is a chapter reference, we can reliably find it by title and chapter
-        # since chapters are unique within a title
-        if subheading_type.lower() == 'chapter':
-            # Search for any node with this title and chapter number
-            result = client.table('nodes').select('id').ilike('id', f"%/title={title}%/chapter={subheading_value}%").execute()
-            if result.data:
-                # Since chapters are unique within a title, we can take the first match
-                return result.data[0]['id']
-            
-    except Exception as e:
-        logger.warning(f"Error finding matching node: {e}")
-        
-    return None
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Process agency data files')
-    parser.add_argument('file', nargs='?', help='Single agency file to process. If not provided, processes all files for latest date.')
+    parser = argparse.ArgumentParser(description='Process agencies data files')
+    parser.add_argument('file', nargs='?', help='Single agencies file to process. If not provided, processes all files for latest date.')
     parser.add_argument('--date', help='Date of the files to process (YYYY-MM-DD)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--local', '-l', action='store_true', help='Store data locally in JSON format instead of database')
     
     args = parser.parse_args()
     
     # Set logging level based on verbose flag
-    if not args.verbose:
-        logger.setLevel(logging.INFO)
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
     
     ensure_directory_exists(PROCESSED_DATA_DIR)
     
     if args.file:
         # Process single file
-        process_agency_file(args.file)
+        process_agencies_file(args.file, args.local)
     else:
         # Process all files for specified date
-        process_all_agencies(args.date) 
+        if args.date is None:
+            args.date = datetime.now().strftime("%Y-%m-%d")
+        
+        input_dir = os.path.join(RAW_DATA_DIR, "agencies", args.date)
+        if not os.path.exists(input_dir):
+            logger.error(f"No data found for date {args.date}")
+            return
+        
+        for filename in os.listdir(input_dir):
+            if not filename.endswith(".json") or not filename.startswith("agencies-"):
+                continue
+            
+            file_path = os.path.join(input_dir, filename)
+            process_agencies_file(file_path, args.local) 
