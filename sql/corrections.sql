@@ -34,6 +34,4 @@ CREATE INDEX corrections_duration_idx ON corrections(correction_duration);
 -- Index for counting corrections per agency
 CREATE INDEX corrections_agency_count_idx ON corrections(agency_id, id);
 
-CREATE INDEX nodes_num_corrections_idx ON nodes(num_corrections);
 
-CREATE INDEX nodes_corrections_name_idx ON nodes(num_corrections, node_name);

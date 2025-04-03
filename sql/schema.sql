@@ -87,3 +87,7 @@ CREATE INDEX nodes_name_idx ON nodes(node_name);
 -- Index for efficient section summing
 CREATE INDEX nodes_parent_level_type_idx ON nodes(parent, level_type);
 
+CREATE INDEX nodes_num_corrections_idx ON nodes(num_corrections);
+
+CREATE INDEX nodes_corrections_name_idx ON nodes(num_corrections, node_name);
+
