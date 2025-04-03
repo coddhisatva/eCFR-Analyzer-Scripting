@@ -329,16 +329,20 @@ def process_children(parent_element, parent_components, parent_id, title_num, no
         # Process children recursively and update counter
         display_order_counter = process_children(div, div_components, div_id, title_num, nodes, chunks, depth + 1, display_order_counter)
     
-    # Update parent node's totals if it exists
-    if parent_id:
-        for node in nodes:
-            if node.id == parent_id:
-                # Sum up num_sections and num_words from children
-                node.num_sections = sum(child.num_sections for child in nodes if child.parent == parent_id)
-                node.num_words = sum(child.num_words for child in nodes if child.parent == parent_id)
-                break
-    
     return display_order_counter
+
+def propagate_node_values(nodes):
+    """Propagate num_sections and num_words up the tree"""
+    # Process nodes in reverse order (bottom-up)
+    for node in reversed(nodes):
+        if node.parent:  # If this node has a parent
+            # Find the parent node
+            for parent in nodes:
+                if parent.id == node.parent:
+                    # Add this node's values to parent
+                    parent.num_sections += node.num_sections
+                    parent.num_words += node.num_words
+                    break
 
 def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk]]:
     """
@@ -406,6 +410,9 @@ def process_title_xml(xml_file_path: str) -> Tuple[List[Node], List[ContentChunk
         
         # Process the hierarchy recursively, updating the counter
         display_order_counter = process_children(title_element, title_components, title_id, title_num, nodes, chunks, depth=1, display_order_counter=display_order_counter)
+        
+        # Propagate values up the tree
+        propagate_node_values(nodes)
         
         logger.info(f"Finished processing {xml_file_path}. Found {len(nodes)} nodes and {len(chunks)} chunks")
         return nodes, chunks
