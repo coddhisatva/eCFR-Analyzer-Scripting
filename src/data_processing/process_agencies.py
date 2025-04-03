@@ -118,7 +118,30 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     # Determine if this is a root agency
     is_root = parent_id is None
     
-    # Create agency entity
+    # Get CFR references for this agency
+    cfr_refs = []
+    client = get_supabase_client()
+    
+    for ref in agency_data.get('cfr_references', []):
+        # Get title number
+        title = ref.get('title')
+        if not title:
+            continue
+            
+        # Build node_id from title and subheading
+        subheading = ref.get('chapter') or ref.get('subchapter') or ref.get('subtitle') or ref.get('part')
+        if not subheading:
+            continue
+            
+        # Try to find the correct node_id
+        node_id = find_matching_node_id(client, title, f"chapter={subheading}")
+        if not node_id:
+            logger.warning(f"Could not find matching node for title={title}, chapter={subheading}")
+            continue
+            
+        cfr_refs.append(node_id)
+    
+    # Create agency entity with metrics
     agency = Agency(
         id=agency_id,
         name=clean_text(agency_data.get('name', '')),
@@ -135,10 +158,11 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
             'last_updated': datetime.now().isoformat()
         },
         num_children=len(agency_data.get('children', [])),
+        num_cfr=len(cfr_refs),
         num_words=0,  # Will be calculated later
         num_sections=0,  # Will be calculated later
         num_corrections=0,  # Will be calculated later
-        num_cfr_refs=len(agency_data.get('cfr_references', []))  # Count CFR references
+        cfr_references=cfr_refs  # Store node IDs
     )
     
     agencies.append(agency)
@@ -147,6 +171,12 @@ def process_agency_data(agency_data: Dict[str, Any], parent_id: Optional[str] = 
     for child in agency_data.get('children', []):
         child_agencies = process_agency_data(child, agency_id, depth + 1)
         agencies.extend(child_agencies)
+        
+        # Propagate child's CFR references up to parent
+        if child_agencies:
+            for child_agency in child_agencies:
+                agency.cfr_references.extend(child_agency.cfr_references)
+                agency.num_cfr = len(agency.cfr_references)  # Update count
     
     return agencies
 

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS agencies (
     num_words INTEGER DEFAULT 0,
     num_sections INTEGER DEFAULT 0,
     num_corrections INTEGER DEFAULT 0,
-    cfr_references TEXT[] DEFAULT '{}'
+    cfr_references TEXT[] DEFAULT '{}'  -- Array of node IDs
 );
 
 -- Index for agency lookups
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS agencies_parent_idx ON agencies(parent_id);
 -- Index for depth-based queries
 CREATE INDEX IF NOT EXISTS agencies_depth_idx ON agencies(depth);
 
--- Index for CFR references array
+-- Index for CFR references array (using GIN for array containment)
 CREATE INDEX IF NOT EXISTS agencies_cfr_refs_idx ON agencies USING GIN (cfr_references);
 
 CREATE TABLE cfr_references (
