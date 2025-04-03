@@ -77,25 +77,7 @@ def main():
     tables_failed = []
     
     try:
-        # 1. Load agencies
-        agencies = load_json_file('agencies.json')
-        if bulk_insert_with_progress(
-            conn, cur, 'agencies',
-            agencies,
-            ['id', 'name', 'description', 'parent_id', 'depth', 'num_children', 
-             'num_cfr', 'num_words', 'num_sections', 'num_corrections', 'cfr_references'],
-            lambda a: (
-                a['id'], a['name'], a.get('description'), a.get('parent_id'),
-                a.get('depth', 0), a.get('num_children', 0), a.get('num_cfr', 0),
-                a.get('num_words', 0), a.get('num_sections', 0),
-                a.get('num_corrections', 0), a.get('cfr_references', [])
-            )
-        ):
-            tables_loaded.append('agencies')
-        else:
-            tables_failed.append('agencies')
-        
-        # 2. Load nodes
+        # 1. Load nodes
         nodes = load_json_file('all_nodes.json')
         if bulk_insert_with_progress(
             conn, cur, 'nodes',
@@ -116,7 +98,7 @@ def main():
         else:
             tables_failed.append('nodes')
         
-        # 3. Load chunks
+        # 2. Load chunks
         chunks = load_json_file('all_chunks.json')
         if bulk_insert_with_progress(
             conn, cur, 'content_chunks',
@@ -129,6 +111,24 @@ def main():
             tables_loaded.append('content_chunks')
         else:
             tables_failed.append('content_chunks')
+        
+        # 3. Load agencies
+        agencies = load_json_file('agencies.json')
+        if bulk_insert_with_progress(
+            conn, cur, 'agencies',
+            agencies,
+            ['id', 'name', 'description', 'parent_id', 'depth', 'num_children', 
+             'num_cfr', 'num_words', 'num_sections', 'num_corrections', 'cfr_references'],
+            lambda a: (
+                a['id'], a['name'], a.get('description'), a.get('parent_id'),
+                a.get('depth', 0), a.get('num_children', 0), a.get('num_cfr', 0),
+                a.get('num_words', 0), a.get('num_sections', 0),
+                a.get('num_corrections', 0), a.get('cfr_references', [])
+            )
+        ):
+            tables_loaded.append('agencies')
+        else:
+            tables_failed.append('agencies')
         
         # 4. Load agency mappings with ON CONFLICT DO NOTHING
         mappings = load_json_file('agency_node_mappings.json')
