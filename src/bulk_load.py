@@ -31,36 +31,56 @@ def load_json_file(filename):
     print(f"File contains {len(data)} records")
     return data
 
-def bulk_insert_with_progress(cur, table_name, data, columns, value_template):
-    print(f"\nProcessing {table_name}...")
-    cur.execute(f'TRUNCATE {table_name} CASCADE')
-    
-    total_batches = (len(data) + BATCH_SIZE - 1) // BATCH_SIZE
-    
-    for i in tqdm(range(0, len(data), BATCH_SIZE), desc=f"Inserting {table_name}", total=total_batches):
-        batch = data[i:i + BATCH_SIZE]
-        values = [value_template(item) for item in batch]
+def bulk_insert_with_progress(conn, cur, table_name, data, columns, value_template, on_conflict=None):
+    try:
+        print(f"\nProcessing {table_name}...")
+        cur.execute(f'TRUNCATE {table_name} CASCADE')
+        conn.commit()  # Commit the truncate immediately
         
-        execute_values(cur,
-            f"""
-            INSERT INTO {table_name} ({', '.join(columns)})
-            VALUES %s
-            """,
-            values,
-            page_size=BATCH_SIZE
-        )
-        print(f"Memory usage: {get_memory_usage():.1f} MB")
+        total_batches = (len(data) + BATCH_SIZE - 1) // BATCH_SIZE
+        successful_inserts = 0
+        
+        for i in tqdm(range(0, len(data), BATCH_SIZE), desc=f"Inserting {table_name}", total=total_batches):
+            try:
+                batch = data[i:i + BATCH_SIZE]
+                values = [value_template(item) for item in batch]
+                
+                sql = f"""
+                    INSERT INTO {table_name} ({', '.join(columns)})
+                    VALUES %s
+                    {on_conflict if on_conflict else ''}
+                """
+                
+                execute_values(cur, sql, values, page_size=BATCH_SIZE)
+                conn.commit()  # Commit each batch
+                successful_inserts += len(batch)
+                print(f"Memory usage: {get_memory_usage():.1f} MB")
+            except Exception as batch_error:
+                print(f"\nError in batch starting at index {i}: {batch_error}")
+                print("Continuing with next batch...")
+                conn.rollback()  # Rollback just this batch
+                continue
+        
+        print(f"✓ {table_name} loaded - {successful_inserts}/{len(data)} records inserted successfully")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error loading {table_name}: {e}")
+        conn.rollback()  # Rollback any uncommitted changes
+        return False
 
 def main():
     print("Connecting to database...")
     conn = psycopg2.connect(**DB_PARAMS)
     cur = conn.cursor()
     
+    tables_loaded = []
+    tables_failed = []
+    
     try:
         # 1. Load agencies
         agencies = load_json_file('agencies.json')
-        bulk_insert_with_progress(
-            cur, 'agencies',
+        if bulk_insert_with_progress(
+            conn, cur, 'agencies',
             agencies,
             ['id', 'name', 'description', 'parent_id', 'depth', 'num_children', 
              'num_cfr', 'num_words', 'num_sections', 'num_corrections', 'cfr_references'],
@@ -70,12 +90,15 @@ def main():
                 a.get('num_words', 0), a.get('num_sections', 0),
                 a.get('num_corrections', 0), a.get('cfr_references', [])
             )
-        )
+        ):
+            tables_loaded.append('agencies')
+        else:
+            tables_failed.append('agencies')
         
         # 2. Load nodes
         nodes = load_json_file('all_nodes.json')
-        bulk_insert_with_progress(
-            cur, 'nodes',
+        if bulk_insert_with_progress(
+            conn, cur, 'nodes',
             nodes,
             ['id', 'citation', 'link', 'node_type', 'level_type', 'number',
              'node_name', 'parent', 'top_level_title', 'depth', 'display_order',
@@ -88,52 +111,68 @@ def main():
                 n.get('num_corrections', 0), n.get('num_sections', 0),
                 n.get('num_words', 0)
             )
-        )
+        ):
+            tables_loaded.append('nodes')
+        else:
+            tables_failed.append('nodes')
         
         # 3. Load chunks
         chunks = load_json_file('all_chunks.json')
-        bulk_insert_with_progress(
-            cur, 'content_chunks',
+        if bulk_insert_with_progress(
+            conn, cur, 'content_chunks',
             chunks,
             ['id', 'section_id', 'chunk_number', 'content'],
             lambda c: (
                 c['id'], c['section_id'], c['chunk_number'], c['content']
             )
-        )
+        ):
+            tables_loaded.append('content_chunks')
+        else:
+            tables_failed.append('content_chunks')
         
-        # 4. Load agency mappings
+        # 4. Load agency mappings with ON CONFLICT DO NOTHING
         mappings = load_json_file('agency_node_mappings.json')
-        bulk_insert_with_progress(
-            cur, 'agency_node_mappings',
+        if bulk_insert_with_progress(
+            conn, cur, 'agency_node_mappings',
             mappings,
             ['agency_id', 'node_id', 'metadata'],
             lambda m: (
                 m['agency_id'], m['node_id'],
                 json.dumps(m['metadata']) if m.get('metadata') else None
-            )
-        )
+            ),
+            on_conflict="ON CONFLICT (agency_id, node_id) DO NOTHING"
+        ):
+            tables_loaded.append('agency_node_mappings')
+        else:
+            tables_failed.append('agency_node_mappings')
         
         # 5. Load CFR references
         references = load_json_file('cfr_references.json')
-        bulk_insert_with_progress(
-            cur, 'cfr_references',
+        if bulk_insert_with_progress(
+            conn, cur, 'cfr_references',
             references,
             ['agency_id', 'title', 'subheading', 'ordinal', 'node_id'],
             lambda r: (
                 r['agency_id'], r['title'], r.get('subheading'),
                 r.get('ordinal'), r.get('node_id')
             )
-        )
+        ):
+            tables_loaded.append('cfr_references')
+        else:
+            tables_failed.append('cfr_references')
         
-        # Commit all changes
-        print("\nCommitting changes...")
-        conn.commit()
-        print("✓ All data loaded successfully!")
+        print("\n=== LOAD SUMMARY ===")
+        if tables_loaded:
+            print("✓ Successfully loaded tables:")
+            for table in tables_loaded:
+                print(f"  - {table}")
+        if tables_failed:
+            print("\n❌ Failed to load tables:")
+            for table in tables_failed:
+                print(f"  - {table}")
         
     except Exception as e:
-        conn.rollback()
-        print(f"Error: {e}")
-        raise
+        print(f"\nUnexpected error: {e}")
     finally:
         cur.close()
         conn.close()
