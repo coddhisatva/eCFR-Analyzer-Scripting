@@ -22,6 +22,10 @@ src/localPush/csv_output/
 *.json
 *.csv
 
+# Generated SQL files
+src/load_*.sql
+src/*.sql
+
 # Python
 __pycache__/
 *.py[cod]
