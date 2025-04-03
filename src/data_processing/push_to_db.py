@@ -1,12 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Script to push nodes and content chunks to the database using SQL functions
+Script to push nodes and content chunks to the database
 """
 import os
 import json
 import logging
 from typing import List, Dict, Any
-from src.database.connector import get_supabase_client
+from src.database.connector import insert_nodes, insert_content_chunks
+from src.models.node import Node
+from src.models.content_chunk import ContentChunk
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -15,91 +17,37 @@ logger = logging.getLogger(__name__)
 # Directory for JSON tables
 JSON_TABLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "src", "localPush", "json_tables")
 
-def push_nodes_to_db():
-    """Push all nodes from JSON files to database"""
-    client = get_supabase_client()
+def push_title_to_db(title_num: str):
+    """Push nodes and content chunks for a single title to the database"""
+    title_dir = os.path.join(JSON_TABLES_DIR, f"title_{title_num}")
     
-    # Get all title directories
-    title_dirs = [d for d in os.listdir(JSON_TABLES_DIR) if d.startswith("title_")]
+    # Push nodes
+    nodes_file = os.path.join(title_dir, "nodes.json")
+    if os.path.exists(nodes_file):
+        with open(nodes_file, 'r', encoding='utf-8') as f:
+            nodes_data = json.load(f)
+            nodes = [Node(**node) for node in nodes_data]
+            insert_nodes(nodes)
+            logger.info(f"Pushed {len(nodes)} nodes for title {title_num}")
     
-    for title_dir in title_dirs:
-        nodes_file = os.path.join(JSON_TABLES_DIR, title_dir, "nodes.json")
-        if not os.path.exists(nodes_file):
-            logger.warning(f"No nodes.json found in {title_dir}")
-            continue
-            
-        try:
-            with open(nodes_file, 'r', encoding='utf-8') as f:
-                nodes = json.load(f)
-            
-            if not nodes:
-                logger.warning(f"No nodes found in {nodes_file}")
-                continue
-                
-            # Convert nodes to JSONB for SQL function
-            nodes_json = json.dumps(nodes)
-            
-            # Call the bulk insert function
-            result = client.rpc('bulk_insert_nodes', {'nodes_json': nodes_json}).execute()
-            
-            if result.error:
-                logger.error(f"Error inserting nodes for {title_dir}: {result.error}")
-            else:
-                logger.info(f"Successfully inserted {len(nodes)} nodes for {title_dir}")
-                
-        except Exception as e:
-            logger.error(f"Error processing {nodes_file}: {e}")
-            continue
-
-def push_content_chunks_to_db():
-    """Push all content chunks from JSON files to database"""
-    client = get_supabase_client()
-    
-    # Get all title directories
-    title_dirs = [d for d in os.listdir(JSON_TABLES_DIR) if d.startswith("title_")]
-    
-    for title_dir in title_dirs:
-        chunks_file = os.path.join(JSON_TABLES_DIR, title_dir, "content_chunks.json")
-        if not os.path.exists(chunks_file):
-            logger.warning(f"No content_chunks.json found in {title_dir}")
-            continue
-            
-        try:
-            with open(chunks_file, 'r', encoding='utf-8') as f:
-                chunks = json.load(f)
-            
-            if not chunks:
-                logger.warning(f"No chunks found in {chunks_file}")
-                continue
-                
-            # Convert chunks to JSONB for SQL function
-            chunks_json = json.dumps(chunks)
-            
-            # Call the bulk insert function
-            result = client.rpc('bulk_insert_content_chunks', {'chunks_json': chunks_json}).execute()
-            
-            if result.error:
-                logger.error(f"Error inserting chunks for {title_dir}: {result.error}")
-            else:
-                logger.info(f"Successfully inserted {len(chunks)} chunks for {title_dir}")
-                
-        except Exception as e:
-            logger.error(f"Error processing {chunks_file}: {e}")
-            continue
+    # Push content chunks
+    chunks_file = os.path.join(title_dir, "content_chunks.json")
+    if os.path.exists(chunks_file):
+        with open(chunks_file, 'r', encoding='utf-8') as f:
+            chunks_data = json.load(f)
+            chunks = [ContentChunk(**chunk) for chunk in chunks_data]
+            insert_content_chunks(chunks)
+            logger.info(f"Pushed {len(chunks)} content chunks for title {title_num}")
 
 def main():
-    """Main function to push data to database"""
-    logger.info("Starting database push...")
+    """Push all titles to the database"""
+    # Get all title directories
+    title_dirs = [d for d in os.listdir(JSON_TABLES_DIR) if d.startswith("title_")]
     
-    # Push nodes first (since content_chunks references nodes)
-    logger.info("Pushing nodes to database...")
-    push_nodes_to_db()
-    
-    # Then push content chunks
-    logger.info("Pushing content chunks to database...")
-    push_content_chunks_to_db()
-    
-    logger.info("Finished database push")
+    for title_dir in title_dirs:
+        title_num = title_dir.split('_')[1]  # Extract title number
+        logger.info(f"Processing title {title_num}...")
+        push_title_to_db(title_num)
 
 if __name__ == "__main__":
     main() 

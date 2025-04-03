@@ -66,6 +66,9 @@ CREATE INDEX agencies_num_sections_idx ON agencies(num_sections);
 -- order by numwords
 CREATE INDEX agencies_num_words_idx ON agencies(num_words);
 
+der by numwords
+CREATE INDEX agencies_num_words_idx ON agencies(num_children);
+
 -- order by numcorrections
 CREATE INDEX agencies_num_corrections_idx ON agencies(num_corrections);
 
