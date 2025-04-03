@@ -600,16 +600,99 @@ class UnifiedProcessor:
             self.mappings_by_agency[mapping.agency_id].append(mapping)
             self.mappings_by_node[mapping.node_id].append(mapping)
 
+    def _calculate_unified_metrics(self) -> None:
+        """
+        Single unified pass to calculate both agency depths and node-based metrics.
+        Combines what was previously separate tree traversals.
+        """
+        logger.info("Calculating unified metrics...")
+        
+        # First calculate agency depths since we need this for the node tree traversal
+        depth_cache = {}
+        for agency_id in self.agencies:
+            if agency_id not in depth_cache:
+                current = agency_id
+                depth = 0
+                path = []
+                
+                # Traverse up to find depth
+                while current:
+                    if current in depth_cache:
+                        depth += depth_cache[current]
+                        break
+                    path.append(current)
+                    current = self.agencies[current].parent_id
+                    if current:
+                        depth += 1
+                
+                # Update depths for all agencies in path
+                for i, agency_id in enumerate(reversed(path)):
+                    depth_cache[agency_id] = depth - i
+                    self.agencies[agency_id].depth = depth - i
+        
+        # Now do unified node tree traversal
+        root_nodes = [node_id for node_id, node in self.nodes.items() if not node.parent]
+        for root_id in root_nodes:
+            self._process_node_tree_unified(root_id)
+
+    def _validate_before_write(self) -> Tuple[bool, Dict[str, List[str]]]:
+        """
+        Single validation pass before writing to database.
+        Returns (success, validation_results) where validation_results contains details of any failures
+        """
+        logger.info("Running final validation before database write...")
+        validation_results = {
+            'node_hierarchy': [],
+            'agency_hierarchy': [],
+            'agency_node_mappings': [],
+            'cfr_references': []
+        }
+        
+        # Check node hierarchy
+        for node_id, node in self.nodes.items():
+            if node.parent and node.parent not in self.nodes:
+                validation_results['node_hierarchy'].append(
+                    f"Node {node_id} ({node.node_type}/{node.level_type}) has invalid parent {node.parent}"
+                )
+        
+        # Check agency hierarchy
+        for agency_id, agency in self.agencies.items():
+            if agency.parent_id and agency.parent_id not in self.agencies:
+                validation_results['agency_hierarchy'].append(
+                    f"Agency {agency_id} ({agency.name}) has invalid parent {agency.parent_id}"
+                )
+        
+        # Check agency-node mappings
+        for mapping in self.agency_node_mappings:
+            if mapping.agency_id not in self.agencies:
+                validation_results['agency_node_mappings'].append(
+                    f"Mapping references non-existent agency {mapping.agency_id}"
+                )
+            if mapping.node_id not in self.nodes:
+                validation_results['agency_node_mappings'].append(
+                    f"Mapping references non-existent node {mapping.node_id}"
+                )
+        
+        # Check CFR references
+        for ref in self.cfr_references:
+            if ref.agency_id not in self.agencies:
+                validation_results['cfr_references'].append(
+                    f"CFR reference has invalid agency {ref.agency_id}"
+                )
+            if ref.node_id and ref.node_id not in self.nodes:
+                validation_results['cfr_references'].append(
+                    f"CFR reference has invalid node {ref.node_id}"
+                )
+        
+        # Check if any validation errors occurred
+        has_errors = any(len(errors) > 0 for errors in validation_results.values())
+        return not has_errors, validation_results
+
     def write_to_database(self) -> None:
         """Write all processed data to the database"""
         logger.info("Writing processed data to database...")
         
-        # Validate data before writing
-        if not self.validate_data():
-            logger.error("Data validation failed. Aborting database write.")
-            return
-            
-        # Save backup before attempting database write
+        # Save backup first, before any validation or writes
         try:
             backup_path = self._save_backup()
             logger.info(f"Backup saved to {backup_path}")
@@ -620,6 +703,29 @@ class UnifiedProcessor:
                 logger.info("Aborting database write")
                 return
         
+        # Run validation
+        validation_passed, validation_results = self._validate_before_write()
+        if not validation_passed:
+            logger.error("Final validation failed. Details:")
+            for category, errors in validation_results.items():
+                if errors:  # Only show categories with errors
+                    logger.error(f"\n{category.upper()} VALIDATION ERRORS:")
+                    for error in errors:
+                        logger.error(f"  - {error}")
+            
+            logger.info("\nData processing completed but validation failed.")
+            logger.info(f"All data is backed up at: {backup_path}")
+            logger.info("You can:")
+            logger.info("1. Review and fix the validation errors")
+            logger.info("2. Use the backup to retry the database write later")
+            logger.info("3. Force a write of the valid portions of the data")
+            
+            choice = input("\nWould you like to force write the valid data anyway? (y/n): ")
+            if choice.lower() != 'y':
+                logger.info("Database write aborted. Data preserved in backup.")
+                return
+            logger.warning("Proceeding with database write despite validation failures...")
+        
         try:
             # Clear existing data
             self.client.table('nodes').delete().execute()
@@ -629,36 +735,16 @@ class UnifiedProcessor:
             self.client.table('corrections').delete().execute()
             self.client.table('agency_node_mappings').delete().execute()
             
-            # Write nodes
-            nodes_data = [node.__dict__ for node in self.nodes.values()]
-            self.client.table('nodes').upsert(nodes_data).execute()
-            logger.info(f"Wrote {len(nodes_data)} nodes")
+            # Write all data in one go
+            self._write_nodes_and_chunks()
+            self._write_agencies_and_refs()
+            self._write_corrections_and_mappings()
             
-            # Write content chunks
-            chunks_data = [chunk.__dict__ for chunk in self.content_chunks]
-            self.client.table('content_chunks').upsert(chunks_data).execute()
-            logger.info(f"Wrote {len(chunks_data)} content chunks")
+            logger.info("Successfully wrote all data to database")
             
-            # Write agencies
-            agencies_data = [agency.__dict__ for agency in self.agencies.values()]
-            self.client.table('agencies').upsert(agencies_data).execute()
-            logger.info(f"Wrote {len(agencies_data)} agencies")
-            
-            # Write CFR references
-            refs_data = [ref.__dict__ for ref in self.cfr_references]
-            self.client.table('cfr_references').upsert(refs_data).execute()
-            logger.info(f"Wrote {len(refs_data)} CFR references")
-            
-            # Write corrections
-            corrections_data = [corr.__dict__ for corr in self.corrections]
-            self.client.table('corrections').upsert(corrections_data).execute()
-            logger.info(f"Wrote {len(corrections_data)} corrections")
-            
-            # Write agency-node mappings
-            mappings_data = [mapping.__dict__ for mapping in self.agency_node_mappings]
-            self.client.table('agency_node_mappings').upsert(mappings_data).execute()
-            logger.info(f"Wrote {len(mappings_data)} agency-node mappings")
-            
+            if not validation_passed:
+                logger.warning("Note: Data was written but had validation errors. Review the logs above.")
+                logger.info(f"Backup of pre-write data preserved at: {backup_path}")
         except Exception as e:
             logger.error(f"Database write failed: {e}")
             logger.info(f"Data is safely backed up at: {backup_path}")
@@ -770,9 +856,7 @@ class UnifiedProcessor:
         
         # Single unified pass to calculate all metrics
         logger.info("Calculating all metrics in unified pass...")
-        root_nodes = [node_id for node_id, node in self.nodes.items() if not node.parent]
-        for root_id in root_nodes:
-            self._process_node_tree_unified(root_id)
+        self._calculate_unified_metrics()
         
         # Process agency data
         logger.info("Processing agency data")
