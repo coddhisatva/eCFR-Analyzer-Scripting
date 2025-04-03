@@ -84,6 +84,11 @@ Alternative direct Python approach:
 python src/data_processing/process_xml.py --date 2024-03-31
 ```
 
+1. Process nodes
+```bash
+python3 src/data_processing/process_xml.py --date 2025-03-31
+```
+
 2. Compute node counts:
 ```bash
 python src/precompute/compute_node_counts.py
@@ -92,6 +97,11 @@ python src/precompute/compute_node_counts.py
 3. Process agencies:
 ```bash
 python src/precompute/process_agencies.py
+```
+
+3. Process nodes:
+```bash
+python src/precompute/process_xml.py
 ```
 
 4. Compute correction counts:
@@ -118,3 +128,78 @@ python src/precompute/compute_correction_counts.py
 ## License
 
 [Add your license information here]
+
+# eCFR Data Processing
+
+This repository contains scripts for downloading and processing eCFR (Electronic Code of Federal Regulations) data.
+
+## Setup
+
+1. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+## Data Pipeline
+
+### 1. Download Data
+
+Download the latest data for each component:
+
+```bash
+# Download nodes (XML) data
+python3 src/data_download/download_xml.py --date 2025-03-31
+
+# Download agencies data
+python3 src/data_download/download_agencies.py --date 2025-03-31
+
+# Download corrections data
+python3 src/data_download/download_corrections.py --date 2025-03-31
+```
+
+### 2. Process and Compute
+
+The pipeline alternates between processing raw data and computing derived metrics:
+
+#### Nodes
+1. Process XML into structured data:
+```bash
+python3 src/data_processing/process_xml.py --date 2025-03-31
+```
+
+2. Compute node metrics:
+```bash
+python3 src/precompute/compute_node_metrics.py
+```
+
+#### Agencies
+1. Process agency data:
+```bash
+python3 src/data_processing/process_agencies.py --date 2025-03-31
+```
+
+2. Compute agency metrics:
+```bash
+python3 src/precompute/compute_agency_counts.py
+```
+
+#### Corrections
+1. Process corrections data:
+```bash
+python3 src/data_processing/process_corrections.py --date 2025-03-31
+```
+
+2. Compute correction metrics:
+```bash
+python3 src/precompute/compute_correction_counts.py
+```
+
+## Development
+
+For development guidelines and contribution instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
