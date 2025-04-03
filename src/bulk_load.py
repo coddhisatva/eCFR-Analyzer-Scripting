@@ -201,11 +201,12 @@ def main(resume_table=None, resume_batch=0):
                 start_batch = 0
                 
             data = load_json_file(filename)
-            if table_name == 'agency_node_mappings':
-                # Resolve node IDs before inserting
-                print("\nResolving node IDs for mappings...")
-                for mapping in tqdm(data, desc="Resolving node IDs"):
-                    mapping['node_id'] = resolve_node_id(cur, mapping['node_id'])
+            
+            # Resolve node IDs for both agency mappings and CFR references
+            if table_name in ['agency_node_mappings', 'cfr_references']:
+                print(f"\nResolving node IDs for {table_name}...")
+                for record in tqdm(data, desc="Resolving node IDs"):
+                    record['node_id'] = resolve_node_id(cur, record['node_id'])
             
             if bulk_insert_with_progress(
                 conn, cur, table_name,
