@@ -1,13 +1,13 @@
 # eCFR Analyzer
 
 A comprehensive tool for analyzing and processing the Electronic Code of Federal Regulations (eCFR) data. This project provides a robust pipeline for processing, analyzing, and visualizing regulatory data from the eCFR.
+- one of two Repos for project
+
+Live site: https://ecfr-analyzer-lyart.vercel.app/
+
+Frontend Repo: https://github.com/coddhisatva/eCFR-Analyzer-Frontend/tree/main
 
 ## Overview
-
-The eCFR Analyzer is part of a larger ecosystem that includes:
-- [eCFR-Analyzer-UI](https://github.com/your-org/eCFR-Analyzer-UI) - The frontend application
-- [eCFR-Analyzer-API](https://github.com/your-org/eCFR-Analyzer-API) - The backend API service
-- [Live Demo](https://ecfr-analyzer.vercel.app) - The deployed application
 
 ## Tech Stack
 
@@ -70,43 +70,6 @@ source venv/bin/activate  # On Unix/macOS
 2. Install dependencies:
 ```bash
 pip install -e .
-```
-
-## Processing Data
-
-1. Process all XML files (recommended approach):
-```bash
-./process_xml.sh 2024-03-31  # Replace with your desired date
-```
-
-Alternative direct Python approach:
-```bash
-python src/data_processing/process_xml.py --date 2024-03-31
-```
-
-1. Process nodes
-```bash
-python3 src/data_processing/process_xml.py --date 2025-03-31
-```
-
-2. Compute node counts:
-```bash
-python src/precompute/compute_node_counts.py
-```
-
-3. Process agencies:
-```bash
-python src/precompute/process_agencies.py
-```
-
-3. Process nodes:
-```bash
-python src/precompute/process_xml.py
-```
-
-4. Compute correction counts:
-```bash
-python src/precompute/compute_correction_counts.py
 ```
 
 ## Development
