@@ -1,11 +1,16 @@
 # eCFR Analyzer
 
-A comprehensive tool for analyzing and processing the Electronic Code of Federal Regulations (eCFR) data. This project provides a robust pipeline for processing, analyzing, and visualizing regulatory data from the eCFR.
-- one of two Repos for project
+A comprehensive tool for analyzing and processing the Electronic Code of Federal Regulations (eCFR) data. This project provides a robust pipeline for processing, analyzing, and visualizing regulatory data from the eCFR. This is one of two Repos for project
+
+![eCFR Analyzer Cover](screenshots/eCRF%20Cover.png)
 
 Live site: https://ecfr-analyzer-lyart.vercel.app/
 
 Frontend Repo: https://github.com/coddhisatva/eCFR-Analyzer-Frontend/tree/main
+
+# Loom Video Demo
+
+Click this link to check out a loom video demo of the eCRF Analyzer: https://www.loom.com/share/7732dd6c2c944942baa3e77377b109ad
 
 ## Overview
 
